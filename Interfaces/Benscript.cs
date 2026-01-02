@@ -11,12 +11,15 @@ using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common;
 using VRC.Udon.Common.Interfaces;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
     public class Benscript : UdonSharpBehaviour
     {
         public const int InvalidPlayerID = -1;
+        private const int MAX_QUEUED_PARAM_EVENTS = 50;
 
         [Header("Benscript Properties")]
         public GameObject[] OwnershipRelatives;
@@ -26,6 +29,11 @@ namespace ThisIsBennyK.TexasHoldEm
         private int currentOwnerID = InvalidPlayerID;
 
         private DataList postSerializationSignals = new DataList();
+        private DataList postSerializationSignalsWithParams = new DataList();
+        
+        // Single serialized string parameter for network events [UdonSynced]
+        private string[] serializedParams = new string[MAX_QUEUED_PARAM_EVENTS];
+        private int serializedParamsIdx = 0;
 
         public VRCPlayerApi LocalPlayer => Networking.LocalPlayer;
         public VRCPlayerApi Owner => Networking.GetOwner(gameObject);
@@ -36,6 +44,9 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public virtual void Start()
         {
+            serializedParams = new string[MAX_QUEUED_PARAM_EVENTS];
+            for (int i = 0; i < MAX_QUEUED_PARAM_EVENTS; i++)
+                serializedParams[i] = "";
             Deserialize();
         }
 
@@ -116,6 +127,37 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void AddPostSerialListener(string method) => postSerializationSignals.Add(method);
 
+        protected string SerializeParameterToString(DataToken param)
+        {
+            if (VRCJson.TrySerializeToJson(param, JsonExportType.Beautify, out DataToken json))
+            {
+                // Successfully serialized! We can immediately get the string out of the token and do something with it.
+                Debug.Log($"Successfully serialized to json: {json.String}");
+                return json.String;
+            } 
+            else 
+            {
+                // Failed to serialize for some reason, running ToString on the result should tell us why.
+                Debug.LogError(json.ToString());
+                return "";
+            }
+        }
+
+        public void AddPostSerialListenerWithParam(string method, DataToken param)
+        {
+            string jsonParam = SerializeParameterToString(param);
+
+            if (serializedParamsIdx >= MAX_QUEUED_PARAM_EVENTS) // overflow
+            {
+                Debug.LogError($"Sent out way too many parameterized events (>{MAX_QUEUED_PARAM_EVENTS})!!!");
+                return;
+            }
+
+            postSerializationSignalsWithParams.Add(method);
+            serializedParams[serializedParamsIdx] = jsonParam;
+            serializedParamsIdx++;
+        }
+
         public override void OnPostSerialization(SerializationResult result)
         {
             if (postSerializationSignals.Count > 0)
@@ -128,6 +170,21 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 foreach (DataToken token in signals.ToArray())
                     SendToOwner(token.String);
+            }
+            
+            if (postSerializationSignalsWithParams.Count > 0)
+            {
+                // Take all the parameterized signals into a separate list for processing
+                DataList paramSignals = postSerializationSignalsWithParams.DeepClone();
+                postSerializationSignalsWithParams.Clear();
+
+                int i = 0;
+                foreach (DataToken token in paramSignals.ToArray())
+                {   
+                    SendToOwnerWithParam(token.String, serializedParams[i]);
+                    serializedParams[i] = "";
+                    i++;
+                }
             }
         }
 
@@ -157,6 +214,46 @@ namespace ThisIsBennyK.TexasHoldEm
             else
                 SendCustomNetworkEvent(NetworkEventTarget.Owner, method);
         }
+
+        private int GetStringSize(string str)
+        {
+            return (str.Length + 1) * 2;
+        }
+
+        public void SendToOwnerWithParam(string method, string param)
+        {
+            // VRC devs being stupid
+            // SendCustomEvent doesnt exist (?)
+            // w/e
+            //if (OwnedByLocal)
+            //    SendCustomEvent(method, param);
+            //else
+            SendCustomNetworkEvent(NetworkEventTarget.Owner, method, param);
+        }
+
+        public void SendToOwnerWithParam(string method, DataToken param)
+        {
+            string value = SerializeParameterToString(param);
+            SendToOwnerWithParam(method, value);
+        }
+        
         public void SendToAll(string method) => SendCustomNetworkEvent(NetworkEventTarget.All, method);
+
+
+        public void SendToAllWithParam(string method, string param)
+        {
+            // VRC devs being stupid
+            // SendCustomEvent doesnt exist (?)
+            // w/e
+            //if (OwnedByLocal)
+            //    SendCustomEvent(method, param);
+            //else
+            SendCustomNetworkEvent(NetworkEventTarget.All, method, param);
+        }
+        public void SendToAllWithParam(string method, DataToken param)
+        {
+            string value = SerializeParameterToString(param);
+            SendToOwnerWithParam(method, value);
+        }
     }
 }

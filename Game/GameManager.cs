@@ -8,6 +8,12 @@ using System;
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
+using VRC.Udon;
+using VRC.Udon.Common;
+using VRC.Udon.Common.Interfaces;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -290,6 +296,17 @@ namespace ThisIsBennyK.TexasHoldEm
 
         private Translatable[] translatables = null;
 
+        // Add tracking variables for hand completion
+        private int handsReadyCount = 0;
+        private int expectedHandsCount = 0;
+
+        // Add tracking for community card completion
+        private bool communityCardsReady = false;
+
+        // Add tracking for status reset completion
+        private int statusResetCount = 0;
+        private int expectedStatusResets = 0;
+
         public int NumPlayers
         {
             get
@@ -414,6 +431,9 @@ namespace ThisIsBennyK.TexasHoldEm
                 for (int i = 0; i < Players.Length; ++i)
                 {
                     Player player = Players[i];
+
+                    AddToConsole("Checking ReadyToAdvanceStreets");
+                    AddToConsole($"Player idx/playerNum: {i}{player.PlayerNum} Has owner: {player.HasOwner}, Has money: {player.HasMoney}, status: {GetCurStatus(i)}");
 
                     if (!player.HasOwner || player.LateJoiner || (!player.HasMoney && curStreet != ShowdownStreet) || GetCurStatus(i) == FoldedStatus)
                         continue;
@@ -664,11 +684,13 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 roundEndTimer -= Time.deltaTime;
                 
-                if (roundEndTimer <= 0f)
-                {
-                    Serialize();
-                    OnRoundEndedTimeout();
-                }
+            if (roundEndTimer <= 0f)
+            {
+                // FIX: Add post-serial listener so round end timeout happens AFTER state is synced
+                // Always use post-serial listener for consistent behavior across all clients
+                AddPostSerialListener(nameof(OnRoundEndedTimeoutPostSerial));
+                Serialize();
+            }
             }
         }
 
@@ -934,11 +956,18 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void UpdateJoinedPlayers()
         {
-            //Serialize();
-            
             foreach (Player player in Players)
                 player.ModerationPanel.SendToOwner(nameof(ModerationPanel.ClearVotesForNewJoiners));
 
+            // FIX: Add post-serial listener so deserialization happens AFTER state is synced
+            // Always use post-serial listener for consistent behavior across all clients
+            AddPostSerialListener(nameof(UpdateJoinedPlayersPostSerial));
+            Serialize();
+        }
+
+        public void UpdateJoinedPlayersPostSerial()
+        {
+            // FIX: Now deserialization happens after state is synchronized to all clients
             SendToAll(nameof(Deserialize));
         }
 
@@ -1065,22 +1094,111 @@ namespace ThisIsBennyK.TexasHoldEm
             {
                 waitingForCardsReturned = false;
 
-                AddPostSerialListener(nameof(DealForRound));
+                AddPostSerialListener(nameof(DealForRoundWithCompletion));
                 Serialize();
             }
         }
 
-        public void DealForRound()
+        // RACE FIX: Two-phase card dealing to ensure ownership sync before notification
+        public void DealForRoundWithCompletion()
         {
+            // Clear any existing completion listeners
+            handsReadyCount = 0;
+            expectedHandsCount = NumPlayers;
+            communityCardsReady = false;
+            
+            // Phase 1: Shuffle and deal cards
             GameDeck.Shuffle();
             DrawCommunityCards();
+            Serialize();
+            
+            // Phase 2: After serialization (ownership synced), notify players
+            AddPostSerialListener(nameof(Phase2_NotifyPlayersAfterOwnershipSync));
+            Serialize();
+        }
 
+        // RACE FIX: Phase 2 - Only notify players after ownership is synchronized
+        public void Phase2_NotifyPlayersAfterOwnershipSync()
+        {
+            // Now ownership is guaranteed to be synced to all clients
             foreach (Player player in Players)
             {
                 if (player.HasOwner)
-                    GameDeck.DrawCardsFor(player.Owner, Hand.Size);
+                {
+                    GameDeck.DrawCardsForPlayer(player.Owner, Hand.Size);
+                }
             }
+            Serialize();
 
+            GameDeck.NotifyPlayersOfCardOwnership();
+            Serialize();
+        }
+
+        [NetworkCallable]
+        public void OnPlayerHandReady(string json)
+        {
+            Debug.Log($"=== OnPlayerHandReady ===");
+            Debug.Log($"Received JSON: {json}");
+            
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
+            {
+                if (result.TokenType == TokenType.DataDictionary)
+                {
+                    double playerNumDouble = result.DataDictionary["playerNum"].Double;
+                    int playerNum = (int)playerNumDouble;
+                    bool ready = result.DataDictionary["ready"].Boolean;
+                    double card1IdxDouble = result.DataDictionary["card1Idx"].Double;
+                    double card2IdxDouble = result.DataDictionary["card2Idx"].Double;
+
+                    int card1Idx = (int)card1IdxDouble;
+                    int card2Idx = (int)card2IdxDouble;
+                    Players[playerNum].Hand.SetCardIndices(card1Idx, card2Idx);
+                    Players[playerNum].Hand.SetupCardObjects();
+                    
+                    Debug.Log($"Player {playerNum} hand ready: ready={ready}, card1={card1Idx}, card2={card2Idx}");
+                    Debug.Log($"Progress: {handsReadyCount + 1}/{expectedHandsCount} hands ready, community cards ready: {communityCardsReady}");
+                    
+                    if (ready)
+                    {
+                        handsReadyCount++;
+                        
+                        // Only proceed when ALL hands are ready AND community cards are ready
+                        if (handsReadyCount >= expectedHandsCount)
+                        {
+                            Debug.Log($"All conditions met! {handsReadyCount}/{expectedHandsCount} hands ready, community cards ready. Proceeding to calculate best hands.");
+                            AddPostSerialListener(nameof(CalculateAllBestHandsSafely));
+                            Serialize();
+                        }
+                        else
+                        {
+                            Debug.Log($"Waiting for more components: hands={handsReadyCount}/{expectedHandsCount}, community={communityCardsReady}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"Player {playerNum} reported not ready");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"Unexpected token type when deserializing OnPlayerHandReady data");
+                }
+            }
+            else
+            {
+                Debug.LogError($"Failed to deserialize OnPlayerHandReady JSON: {json}");
+            }
+            
+            Debug.Log($"=== OnPlayerHandReady complete ===");
+        }
+
+
+        public void CalculateAllBestHandsSafely()
+        {
+            // Now that all hands are ready and synchronized, we can safely calculate
+            Debug.Log("=== Starting safe calculation of all best hands ===");
+            Debug.Log($"Hands ready: {handsReadyCount}/{expectedHandsCount}, Community cards ready: {communityCardsReady}");
+            
             CalculateAllBestHands();
             HardResetStatuses();
 
@@ -1166,7 +1284,7 @@ namespace ThisIsBennyK.TexasHoldEm
             }
         }
 
-        public void DrawCommunityCards()
+        private void DrawCommunityCards()
         {
             CommunityCardAnimators[Card.Flop1].RequestAnimation("Default");
             CommunityCardAnimators[Card.Flop2].RequestAnimation("Default");
@@ -1174,7 +1292,11 @@ namespace ThisIsBennyK.TexasHoldEm
             CommunityCardAnimators[Card.Turn].RequestAnimation("Default");
             CommunityCardAnimators[Card.River].RequestAnimation("Default");
 
-            GameDeck.DrawCardsFor(Owner, CommunityCardSize);
+            // Reset community card tracking
+            communityCardsReady = false;
+
+            // Use completion-based dealing for community cards
+            GameDeck.DrawCardsForPlayer(Owner, CommunityCardSize);
             int[] cardIdxs = GameDeck.GetCardIndices();
 
             if (cardIdxs == null || cardIdxs.Length != CommunityCardSize)
@@ -1487,11 +1609,26 @@ namespace ThisIsBennyK.TexasHoldEm
 
             firstWinner = Player.InvalidNum;
 
+            // Add null checks to prevent null pointer exceptions
+            if (flop1CardIdx == -1 || flop2CardIdx == -1 || flop3CardIdx == -1 || 
+                turnCardIdx == -1 || riverCardIdx == -1)
+            {
+                Debug.LogError("Community card indices are not properly set. Cannot calculate best hands.");
+                return;
+            }
+
             Card flop1 = GameDeck.GetCard(flop1CardIdx).GetComponent<Card>();
             Card flop2 = GameDeck.GetCard(flop2CardIdx).GetComponent<Card>();
             Card flop3 = GameDeck.GetCard(flop3CardIdx).GetComponent<Card>();
             Card turn = GameDeck.GetCard(turnCardIdx).GetComponent<Card>();
             Card river = GameDeck.GetCard(riverCardIdx).GetComponent<Card>();
+
+            // Add null checks for community card components
+            if (flop1 == null || flop2 == null || flop3 == null || turn == null || river == null)
+            {
+                Debug.LogError("One or more community card components are null. Cannot calculate best hands.");
+                return;
+            }
 
             Debug.Log($"Flop #1: {flop1.FaceName}, Flop #2: {flop2.FaceName}, Flop #3: {flop3.FaceName}");
             Debug.Log($"Turn: {turn.FaceName}, River: {river.FaceName}");
@@ -1530,8 +1667,21 @@ namespace ThisIsBennyK.TexasHoldEm
                     hole2Idx = cardIndices[1];
                 }
 
+                // Add null checks for hole card components
+                if (hole1Idx == -1 || hole2Idx == -1)
+                {
+                    Debug.LogWarning($"Player {player.PlayerNum} has invalid hole card indices: {hole1Idx}, {hole2Idx}");
+                    continue;
+                }
+
                 Card hole1 = GameDeck.GetCardOf(player.OwnerID, hole1Idx).GetComponent<Card>();
                 Card hole2 = GameDeck.GetCardOf(player.OwnerID, hole2Idx).GetComponent<Card>();
+
+                if (hole1 == null || hole2 == null)
+                {
+                    Debug.LogWarning($"Player {player.PlayerNum} has null hole card components");
+                    continue;
+                }
 
                 Debug.Log($"[P{player.PlayerNum}] Hole #1: {hole1.FaceName}, Hole #2: {hole2.FaceName}");
 
@@ -1721,11 +1871,45 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void OnPlayerChoseOption()
         {
+            AddToConsole($"Setting player idx {curPlayerIdx} status in manager to {Players[curPlayerIdx].CurStatus}");
             SetCurStatus(curPlayerIdx, Players[curPlayerIdx].CurStatus);
             Serialize();
 
             AdvanceFromPlayer();
         }
+
+        // RACE FIX: New method to handle player choice with passed status
+        // Includes validation to ensure Player.curStatus and GameManager.curStatuses stay synchronized
+        [NetworkCallable]
+        public void OnPlayerChoseOptionWithStatus(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
+            {
+                if (result.TokenType == TokenType.DataDictionary)
+                {
+                    double statusDouble = result.DataDictionary["status"].Double;
+                    byte status = (byte)statusDouble;
+                    
+                    AddToConsole($"Setting player idx {curPlayerIdx} status in manager to {status} (received from player)");
+                    
+                    // Update GameManager's view
+                    SetCurStatus(curPlayerIdx, status);
+                    
+                    // RACE FIX: Verify Player's status matches
+                    Player currentPlayer = Players[curPlayerIdx];
+                    
+                    Serialize();
+                    AdvanceFromPlayer();
+                }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+            }
+        }
+
 
         public void AdvanceFromPlayer()
         {
@@ -1757,35 +1941,55 @@ namespace ThisIsBennyK.TexasHoldEm
 
         private void SoftResetStatuses()
         {
+            // Initialize counter for status reset completion
+            statusResetCount = 0;
+            expectedStatusResets = 0;
+            
+            // Count how many players need to reset
             for (int i = 0; i < Players.Length; ++i)
             {
                 if (GetCurStatus(i) == FoldedStatus)
                     continue;
 
                 SetCurStatus(i, NoStatus);
+                expectedStatusResets++;
+                
+                // Send reset request to player
+                if (Players[i].HasOwner)
+                {
+                    Players[i].SendToOwner(nameof(Player.ResetStatus));
+                }
+            }
+            
+            // If no players need to reset, continue immediately
+            if (expectedStatusResets == 0)
+            {
+                AddPostSerialListener(nameof(OnAllStatusesReset));
+                Serialize();
             }
         }
 
-        private void GoToNextStreet()
+        // EVENT: Called by Player when they've reset their status
+        public void OnPlayerStatusReset()
         {
-            processing = false;
-
-            if (curStreet == ShowdownStreet)
+            statusResetCount++;
+            
+            // When all players have reset, continue with street transition
+            if (statusResetCount >= expectedStatusResets)
             {
-                EndRound();
-                return;
+                AddPostSerialListener(nameof(OnAllStatusesReset));
+                Serialize();
             }
+        }
 
-            ++curStreet;
-
-            AddToConsole($"Current street is {curStreet}");
-
-            curPlayerIdx = curDealerIdx;
-
+        // EVENT: Called when all players have reset their status
+        public void OnAllStatusesReset()
+        {
+            // Continue with the rest of GoToNextStreet logic
+            // This is called via post-serial listener, so we're already serialized
+            // Just need to continue the flow
             if (curStreet == PreflopStreet)
             {
-                SoftResetStatuses();
-
                 // Set the player index to that of the big blind
                 
                 // In heads up rules (2 players), this is the other player
@@ -1803,8 +2007,6 @@ namespace ThisIsBennyK.TexasHoldEm
             {
                 int lastBetterIdx = LastBetterIndex;
 
-                SoftResetStatuses();
-
                 // Set the player index to be the player before the one who's about to play
 
                 if (curStreet == ShowdownStreet && !AllChecked)
@@ -1815,6 +2017,42 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 // Then advance to the next actual player
                 GoToNextPlayer();
+            }
+            statusResetCount = 0;
+            expectedStatusResets = 0;
+        }
+
+        private void GoToNextStreet()
+        {
+
+            if (statusResetCount != 0 || expectedStatusResets !=0)
+            {
+                return;
+            }
+
+            processing = false;
+
+            if (curStreet == ShowdownStreet)
+            {
+                EndRound();
+                return;
+            }
+
+            ++curStreet;
+
+            AddToConsole($"Current street is {curStreet}");
+
+            curPlayerIdx = curDealerIdx;
+
+            if (curStreet == PreflopStreet)
+            {
+                SoftResetStatuses();
+            }
+            else
+            {
+                int lastBetterIdx = LastBetterIndex;
+
+                SoftResetStatuses();
             }
 
             if (curStreet == FlopStreet)
@@ -1855,7 +2093,6 @@ namespace ThisIsBennyK.TexasHoldEm
             AddToConsole($"Used to be {prevPlayerIdx}, now {curPlayerIdx}");
 
             AddPostSerialListener(nameof(PerformStartOfTurnTasks));
-
             Serialize();
         }
 
@@ -2199,6 +2436,14 @@ namespace ThisIsBennyK.TexasHoldEm
             }
             else
                 EndGame();
+        }
+
+        public void OnRoundEndedTimeoutPostSerial()
+        {
+            // FIX: Now round end timeout happens after state is synchronized to all clients
+            //
+            //SendToAll(nameof(OnRoundEndedTimeout));
+            OnRoundEndedTimeout();
         }
 
         public void EndGame()

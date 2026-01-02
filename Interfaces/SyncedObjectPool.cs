@@ -48,6 +48,11 @@ namespace ThisIsBennyK.TexasHoldEm
             }
         }
 
+        public void AddToConsole(string text)
+        {
+            Debug.Log(text);
+        }
+
         public override void Start()
         {
             if (initialized)
@@ -83,21 +88,35 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void Shuffle()
         {
+            Debug.Log($"=== Shuffling pool {gameObject.name} ===");
+            
             Utilities.ShuffleArray(spawnOrder);
+                        
+            // Reset the spawn pointer so we start dealing from the beginning of the shuffled deck
+            curSpawned = -1;
+            
             Serialize();
+            
+            Debug.Log($"=== Shuffle complete and synchronized ===");
         }
 
         public void RequestObjectsFor(VRCPlayerApi player, int numObjects)
         {
             // If we've already spawned all the objects, don't do anything
             if (curSpawned == Objects.Length - 1)
+            {
+                AddToConsole($"All objects in pool have been spawned. curSpawned: {curSpawned}, player: {player.displayName}");
                 return;
+            }
 
             for (int i = 0; i < numObjects; ++i)
             {
                 // Check again for if we've spawned all the obejcts since that could change in the loop
                 if (curSpawned == Objects.Length - 1)
+                {
+                    AddToConsole($"All objects in pool have been spawned. curSpawned: {curSpawned}, player: {player.displayName} while looping");
                     break;
+                }
 
                 // Move to the next object index in the list...
                 ++curSpawned;
@@ -105,8 +124,10 @@ namespace ThisIsBennyK.TexasHoldEm
                 // ...and spawn and give the object to the other player
 
                 int objIdx = spawnOrder[curSpawned];
+                AddToConsole($"Spawned objIdx: {objIdx} for player: {player.displayName}");
 
                 TransferOwnershipTo(player, objIdx);
+                AddToConsole($"Transferred object ownership of objIdx: {objIdx} to player: {player.displayName}");
             }
 
             Serialize();

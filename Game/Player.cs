@@ -8,6 +8,9 @@ using UdonSharp;
 using UnityEngine;
 using UnityEngine.UI;
 using VRC.SDKBase;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -482,6 +485,8 @@ namespace ThisIsBennyK.TexasHoldEm
             // REMARK: Have to exclude this from auto-ownership since it needs to be always on
             ModerationPanel.OwnByLocal();
 
+            // FIX: Only claim GameManager if there is no owner yet to prevent ownership contention
+            //if (Manager.OwnerID == InvalidPlayerID)
             if (Manager.OwnerID == InvalidPlayerID || !Manager.OwnerAtTable || Networking.GetOwner(Manager.gameObject) == LocalPlayer)
                 Manager.OwnByLocal();
 
@@ -735,35 +740,34 @@ namespace ThisIsBennyK.TexasHoldEm
             ShowdownTimer.CancelTimer();
             TickTockSFX.Stop();
 
+            byte statusToSend;
             if (Manager.CurStreet >= GameManager.ShowdownStreet && (ForcedReveal || revealChosen))
-            {
-                curStatus = GameManager.CheckedStatus;
+                statusToSend = GameManager.CheckedStatus;
+            else
+                statusToSend = GameManager.FoldedStatus;
 
-                // If we're the last player before the round ends,
-                // don't play the reveal effect so the winner effect can play without interruption
-                if (Manager.NumPlayersWithAction > 1)
-                {
-                    RevealFX.PlayForAll();
-                    Manager.RevealJingle.PlayForAll();
-                }
+            Manager.AddToConsole($"Changed curStatus to {statusToSend} for player {PlayerNum}");
+
+            // Play effects locally - they don't need to be synchronized
+            if (statusToSend == GameManager.CheckedStatus)
+            {
+                RevealFX.PlayForAll();
+                Manager.RevealJingle.PlayForAll();
             }
             else
             {
-                curStatus = GameManager.FoldedStatus;
-
-                // If we're the last player before the round ends or a win by default is about to occur,
-                // don't play the reveal effect so the winner effect can play without interruption
-                if ((Manager.CurStreet == GameManager.ShowdownStreet && Manager.NumPlayersWithAction > 1) || !Manager.AboutToBeWinByDefault)
-                {
-                    FoldFX.PlayForAll();
-                    Manager.FoldJingle.PlayForAll();
-                }
+                FoldFX.PlayForAll();
+                Manager.FoldJingle.PlayForAll();
             }
 
             Manager.SendToAll(nameof(GameManager.ResetRaisePitch));
             Manager.SendToAll(nameof(GameManager.ResetAllInPitch));
 
-            AddPostSerialListener(nameof(AdvanceGame));
+            // FIXED: Pass only the critical status data
+            curStatus = statusToSend;
+            var actionData = new DataDictionary();
+            actionData.Add("status", statusToSend);
+            AddPostSerialListenerWithParam(nameof(AdvanceGameWithStatus), actionData);
             Serialize();
         }
 
@@ -771,13 +775,16 @@ namespace ThisIsBennyK.TexasHoldEm
         {
             Manager.AddToConsole("Trying to switch turns from bet");
 
-            curStatus = GameManager.BettedStatus;
+            // FIXED: Only send critical status data
+            byte statusToSend = GameManager.BettedStatus;
+            curStatus = statusToSend;
+            int betAmount = AddtBet.GetChips();
+            int currentStreet = Manager.CurStreet;
 
-            int curGreatestBet = Manager.CurGreatestBet;
-            int betAmt = AddtBet.GetChips();
+            Manager.AddToConsole($"Changed curStatus to {statusToSend} for player {PlayerNum}");
 
-            bets[Manager.CurStreet] += betAmt;
-            BetPile.AddChips(betAmt);
+            bets[currentStreet] += betAmount;
+            BetPile.AddChips(betAmount);
             BetSFX.PlayForAll();
 
             if (Bankroll.GetChips() <= 0)
@@ -786,7 +793,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 Manager.SendToAll(nameof(GameManager.PlayRisingAllIn));
                 Manager.SendToAll(nameof(GameManager.ResetRaisePitch));
             }
-            else if (bets[Manager.CurStreet] > curGreatestBet)
+            else if (bets[currentStreet] > Manager.CurGreatestBet)
             {
                 RaiseFX.PlayForAll();
                 Manager.SendToAll(nameof(GameManager.PlayRisingRaise));
@@ -800,7 +807,12 @@ namespace ThisIsBennyK.TexasHoldEm
                 Manager.SendToAll(nameof(GameManager.ResetAllInPitch));
             }
 
-            AddPostSerialListener(nameof(AdvanceGame));
+            // FIXED: Pass only critical data (status, bet amount, street)
+            var betData = new DataDictionary();
+            betData.Add("status", statusToSend);
+            betData.Add("betAmount", bets[currentStreet]);
+            betData.Add("street", currentStreet);
+            AddPostSerialListenerWithParam(nameof(AdvanceGameWithBetData), betData);
             Serialize();
         }
 
@@ -811,22 +823,143 @@ namespace ThisIsBennyK.TexasHoldEm
 
             Manager.AddToConsole("Trying to switch turns from check");
 
-            curStatus = GameManager.CheckedStatus;
+            // FIXED: Only send critical status data
+            byte statusToSend = GameManager.CheckedStatus;
+            int currentStreet = Manager.CurStreet;
+            curStatus = statusToSend;
+
+            Manager.AddToConsole($"Changed curStatus to {statusToSend} for player {PlayerNum}");
 
             CheckFX.PlayForAll();
             Manager.CheckJingle.PlayForAll();
             Manager.SendToAll(nameof(GameManager.ResetRaisePitch));
             Manager.SendToAll(nameof(GameManager.ResetAllInPitch));
 
-            AddPostSerialListener(nameof(AdvanceGame));
+            // FIXED: Pass only critical data (status, street)
+            var checkData = new DataDictionary();
+            checkData.Add("status", statusToSend);
+            checkData.Add("street", currentStreet);
+            AddPostSerialListenerWithParam(nameof(AdvanceGameWithCheckData), checkData);
             Serialize();
         }
 
-        public void AdvanceGame() => Manager.SendToOwner(nameof(GameManager.OnPlayerChoseOption));
+        // EVENT: Called by GameManager to reset local status
+        public void ResetStatus()
+        {
+            Debug.Log($"Player {PlayerNum} resetting status from {curStatus} to {GameManager.NoStatus}");
+            curStatus = GameManager.NoStatus;
+            Serialize();
+            
+            // Notify GameManager that we've reset
+            Manager.SendToOwner(nameof(GameManager.OnPlayerStatusReset));
+        }
+
+        // EVENT: Called by GameManager to notify player that their cards are now playable
+        public void OnCardsPlayable()
+        {
+            Debug.Log($"Player {PlayerNum} received OnCardsPlayable event - cards should now be interactable");
+            // This event is called after processing is set to false
+            // The Hand.Deserialize() method will handle the actual interactability change
+            // No need to manually set anything here - just log for debugging
+        }
+
+        // FIXED: New method to handle card action with passed status
+        [NetworkCallable]
+        public void AdvanceGameWithStatus(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
+            {
+                // Deserialization succeeded! Let's figure out what we've got.
+                if (result.TokenType == TokenType.DataDictionary)
+                {
+                    Debug.Log($"Successfully deserialized as a dictionary with {result.DataDictionary.Count} items.");
+                    // Use the passed status instead of accessing local field
+                    double statusDouble = result.DataDictionary["status"].Double;
+                    curStatus = (byte)statusDouble;
+                    Manager.SendToOwnerWithParam(nameof(GameManager.OnPlayerChoseOptionWithStatus), json);
+                }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                // Deserialization failed. Let's see what the error was.
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+            }
+
+        }
+
+        // FIXED: New method to handle bet action with passed data
+        [NetworkCallable]
+        public void AdvanceGameWithBetData(string json)
+        {
+
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
+            {
+                // Deserialization succeeded! Let's figure out what we've got.
+                if (result.TokenType == TokenType.DataDictionary)
+                {
+                    Debug.Log($"Successfully deserialized as a dictionary with {result.DataDictionary.Count} items.");
+                    // Use the passed status instead of accessing local field
+                    double statusDouble = result.DataDictionary["status"].Double;
+                    double betAmountDouble = result.DataDictionary["betAmount"].Double;
+                    double streetDouble = result.DataDictionary["street"].Double;
+
+                    int street = (int)streetDouble;
+
+                    // Use the passed status instead of accessing local field
+                    curStatus = (byte)statusDouble;
+                    bets[street] = (int)betAmountDouble; // This was already done locally, but ensure consistency
+                    
+                    Manager.SendToOwnerWithParam(nameof(GameManager.OnPlayerChoseOptionWithStatus), json);
+                }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                // Deserialization failed. Let's see what the error was.
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+            }
+
+        }
+
+        // FIXED: New method to handle check action with passed data
+        [NetworkCallable]
+        public void AdvanceGameWithCheckData(string json)
+        {
+
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
+            {
+                // Deserialization succeeded! Let's figure out what we've got.
+                if (result.TokenType == TokenType.DataDictionary)
+                {
+                    Debug.Log($"Successfully deserialized as a dictionary with {result.DataDictionary.Count} items.");
+                    // Use the passed status instead of accessing local field
+                    double statusDouble = result.DataDictionary["status"].Double;
+                    double streetDouble = result.DataDictionary["street"].Double;
+
+
+                    // Use the passed status instead of accessing local field
+                    curStatus = (byte)statusDouble;
+                    
+                    Manager.SendToOwnerWithParam(nameof(GameManager.OnPlayerChoseOptionWithStatus), json);
+                }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                // Deserialization failed. Let's see what the error was.
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+            }
+            
+        }
 
         private void ClearDecision()
         {
             curStatus = GameManager.NoStatus;
+            Manager.AddToConsole($"Changed curStatus to {curStatus} for player {PlayerNum}");
             Serialize();
         }
 
