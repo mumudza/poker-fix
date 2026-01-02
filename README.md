@@ -4,6 +4,12 @@
 
 Make sure to change your git email and user to a different one. 
 
+## Contributing
+
+Make a PR :)
+
+This repo only contains files contained within the Scripts folder in the prefab. You can init your own local repo there.
+
 ## Probable root cause
 
 The current script seems to rely on undefined behavior on serialization/deserialization. In Benscript.cs you can find the following code extract:
