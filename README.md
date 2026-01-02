@@ -2,7 +2,7 @@
 
 ## Before commiting
 
-Make sure to change your git email and user to a different one. 
+Make sure to change your git email and user to a different one. Also, change your GitHub settings to make your email private.
 
 ## Contributing
 
