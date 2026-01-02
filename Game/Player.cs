@@ -650,6 +650,8 @@ namespace ThisIsBennyK.TexasHoldEm
         public void PerformStartOfGameTasks()
         {
             Bankroll.SetInitialRoll();
+            Serialize();
+            Manager.SendToOwner(nameof(GameManager.PerformStartOfGameTasks2));
         }
 
         public void PerformEndOfRoundTasks()
@@ -677,10 +679,19 @@ namespace ThisIsBennyK.TexasHoldEm
             Serialize();
         }
 
+        public void PerformStartOfRoundTasksCallback()
+        {
+            PerformStartOfRoundTasks();
+            Serialize();
+            Manager.SendToOwner(nameof(GameManager.PerformStartOfRoundTasks2));
+        }
+
         public void PerformSmallBlindTasks()
         {
             PerformStartOfRoundTasks();
             ForceSmallBlind();
+            Serialize();
+            Manager.SendToOwner(nameof(GameManager.PerformStartOfRoundTasks2));
         }
 
         public void PerformBigBlindTasks()
@@ -688,6 +699,8 @@ namespace ThisIsBennyK.TexasHoldEm
             Debug.Log("BBBBBBBBBBBBBBBBBBBBBB HERE BBBBBBBBBBBBBBBBBBBBBBBB");
             PerformStartOfRoundTasks();
             ForceBigBlind();
+            Serialize();
+            Manager.SendToOwner(nameof(GameManager.PerformStartOfRoundTasks2));
         }
 
         public void PerformStartOfTurnTasks()

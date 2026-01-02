@@ -996,15 +996,36 @@ namespace ThisIsBennyK.TexasHoldEm
             Serialize();
         }
 
+        int performedStartOfGameTasks = 0;
+        int expectedPerformStartOfGameTasks = 0;
+
         public void PerformStartOfGameTasks()
         {
+            if(performedStartOfGameTasks != 0 || expectedPerformStartOfGameTasks != 0)
+                return;
+
             foreach (Player player in Players)
             {
                 if (player.HasOwner)
+                {
+                    expectedPerformStartOfGameTasks++;
                     player.SendToOwner(nameof(Player.PerformStartOfGameTasks));
+                }
             }
 
+        }
+
+        public void PerformStartOfGameTasks2()
+        {
+            if (performedStartOfGameTasks < expectedPerformStartOfGameTasks)
+            {
+                AddToConsole($"Performed Start of Game tasks: {performedStartOfGameTasks}/{expectedPerformStartOfGameTasks}");
+                return;
+            }
+            
             waitingForNextGame = true;
+            performedStartOfGameTasks = 0;
+            expectedPerformStartOfGameTasks = 0;
             Serialize();
         }
 
@@ -1206,8 +1227,16 @@ namespace ThisIsBennyK.TexasHoldEm
             Serialize();
         }
 
+
+        int performedStartOfRoundTasks = 0;
+        int expectedPerformStartOfRoundTasks = 0;
+
         public void PerformStartOfRoundTasks()
         {
+
+            if(performedStartOfRoundTasks != 0 || expectedPerformStartOfRoundTasks != 0)
+                return;
+
             GoToNextDealer();
 
             int smallBlindPlayer = GetPlayerNextTo(curDealerIdx);
@@ -1232,13 +1261,25 @@ namespace ThisIsBennyK.TexasHoldEm
                 else if (player.PlayerNum == bigBlindPlayer)
                     player.SendToOwner(nameof(Player.PerformBigBlindTasks));
                 else
-                    player.SendToOwner(nameof(Player.PerformStartOfRoundTasks));
+                    player.SendToOwner(nameof(Player.PerformStartOfRoundTasksCallback));
             }
+        }
 
+        public void PerformStartOfRoundTasks2()
+        {
+            if (performedStartOfRoundTasks < expectedPerformStartOfRoundTasks)
+            {
+                AddToConsole($"Performed Start of Round tasks: {performedStartOfGameTasks}/{expectedPerformStartOfGameTasks}");
+                return;
+            }
+            
             waitingForNextRound = true;
             ++curRound;
+            performedStartOfRoundTasks = 0;
+            expectedPerformStartOfRoundTasks = 0;
             Serialize();
         }
+
 
         private void WaitForNextRound()
         {
