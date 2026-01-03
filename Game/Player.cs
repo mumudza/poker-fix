@@ -843,26 +843,6 @@ namespace ThisIsBennyK.TexasHoldEm
             SendToOwnerWithParam(nameof(AdvanceGameWithCheckData), checkData);
         }
 
-        // EVENT: Called by GameManager to reset local status
-        public void ResetStatus()
-        {
-            Debug.Log($"Player {PlayerNum} resetting status from {curStatus} to {GameManager.NoStatus}");
-            curStatus = GameManager.NoStatus;
-            Serialize();
-            
-            // Notify GameManager that we've reset
-            Manager.SendToOwner(nameof(GameManager.OnPlayerStatusReset));
-        }
-
-        // EVENT: Called by GameManager to notify player that their cards are now playable
-        public void OnCardsPlayable()
-        {
-            Debug.Log($"Player {PlayerNum} received OnCardsPlayable event - cards should now be interactable");
-            // This event is called after processing is set to false
-            // The Hand.Deserialize() method will handle the actual interactability change
-            // No need to manually set anything here - just log for debugging
-        }
-
         // FIXED: New method to handle card action with passed status
         [NetworkCallable]
         public void AdvanceGameWithStatus(string json)
