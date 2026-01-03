@@ -11,15 +11,12 @@ using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common;
 using VRC.Udon.Common.Interfaces;
-using VRC.SDK3.Data;
-using VRC.SDK3.StringLoading;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
     public class Benscript : UdonSharpBehaviour
     {
         public const int InvalidPlayerID = -1;
-        private const int MAX_QUEUED_PARAM_EVENTS = 50;
 
         [Header("Benscript Properties")]
         public GameObject[] OwnershipRelatives;
@@ -27,8 +24,9 @@ namespace ThisIsBennyK.TexasHoldEm
 
         [UdonSynced]
         private int currentOwnerID = InvalidPlayerID;
-        
+
         private DataList postSerializationSignals = new DataList();
+
         public VRCPlayerApi LocalPlayer => Networking.LocalPlayer;
         public VRCPlayerApi Owner => Networking.GetOwner(gameObject);
         public bool OwnedByLocal => currentOwnerID == LocalID && Networking.IsOwner(gameObject);
@@ -118,22 +116,6 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void AddPostSerialListener(string method) => postSerializationSignals.Add(method);
 
-        protected string SerializeParameterToString(DataToken param)
-        {
-            if (VRCJson.TrySerializeToJson(param, JsonExportType.Beautify, out DataToken json))
-            {
-                // Successfully serialized! We can immediately get the string out of the token and do something with it.
-                Debug.Log($"Successfully serialized to json: {json.String}");
-                return json.String;
-            } 
-            else 
-            {
-                // Failed to serialize for some reason, running ToString on the result should tell us why.
-                Debug.LogError(json.ToString());
-                return "";
-            }
-        }
-
         public override void OnPostSerialization(SerializationResult result)
         {
             if (postSerializationSignals.Count > 0)
@@ -147,7 +129,6 @@ namespace ThisIsBennyK.TexasHoldEm
                 foreach (DataToken token in signals.ToArray())
                     SendToOwner(token.String);
             }
-            
         }
 
         // You cannot send OnDeserialization via SendCustomNetworkEvent
@@ -176,46 +157,6 @@ namespace ThisIsBennyK.TexasHoldEm
             else
                 SendCustomNetworkEvent(NetworkEventTarget.Owner, method);
         }
-
-        private int GetStringSize(string str)
-        {
-            return (str.Length + 1) * 2;
-        }
-
-        public void SendToOwnerWithParam(string method, string param)
-        {
-            // VRC devs being stupid
-            // SendCustomEvent doesnt exist (?)
-            // w/e
-            //if (OwnedByLocal)
-            //    SendCustomEvent(method, param);
-            //else
-            SendCustomNetworkEvent(NetworkEventTarget.Owner, method, param);
-        }
-
-        public void SendToOwnerWithParam(string method, DataToken param)
-        {
-            string value = SerializeParameterToString(param);
-            SendToOwnerWithParam(method, value);
-        }
-        
         public void SendToAll(string method) => SendCustomNetworkEvent(NetworkEventTarget.All, method);
-
-
-        public void SendToAllWithParam(string method, string param)
-        {
-            // VRC devs being stupid
-            // SendCustomEvent doesnt exist (?)
-            // w/e
-            //if (OwnedByLocal)
-            //    SendCustomEvent(method, param);
-            //else
-            SendCustomNetworkEvent(NetworkEventTarget.All, method, param);
-        }
-        public void SendToAllWithParam(string method, DataToken param)
-        {
-            string value = SerializeParameterToString(param);
-            SendToOwnerWithParam(method, value);
-        }
     }
 }
