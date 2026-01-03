@@ -225,7 +225,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 }
             } else {
                 // Deserialization failed. Let's see what the error was.
-                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+                Debug.LogError($"OnCardsReady: Failed to Deserialize json {json} - {result.ToString()}");
             }
             
             Debug.Log($"=== Player {ParentPlayer.PlayerNum} OnCardsReady complete ===");

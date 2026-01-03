@@ -681,6 +681,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void PerformStartOfRoundTasksCallback()
         {
+            Debug.Log("PerformStartOfRoundTasksCallback");
             PerformStartOfRoundTasks();
             Serialize();
             Manager.SendToOwner(nameof(GameManager.PerformStartOfRoundTasks2));
@@ -688,6 +689,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void PerformSmallBlindTasks()
         {
+            Debug.Log("PerformSmallBlindTasks");
             PerformStartOfRoundTasks();
             ForceSmallBlind();
             Serialize();
@@ -696,7 +698,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void PerformBigBlindTasks()
         {
-            Debug.Log("BBBBBBBBBBBBBBBBBBBBBB HERE BBBBBBBBBBBBBBBBBBBBBBBB");
+            Debug.Log("PerformBigBlindTasks");
             PerformStartOfRoundTasks();
             ForceBigBlind();
             Serialize();
@@ -897,7 +899,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 }
             } else {
                 // Deserialization failed. Let's see what the error was.
-                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+                Debug.LogError($"AdvanceGameWithStatus: Failed to Deserialize json {json} - {result.ToString()}");
             }
 
         }
@@ -932,7 +934,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 }
             } else {
                 // Deserialization failed. Let's see what the error was.
-                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+                Debug.LogError($"AdvanceGameWithBetData: Failed to Deserialize json {json} - {result.ToString()}");
             }
 
         }
@@ -964,7 +966,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 }
             } else {
                 // Deserialization failed. Let's see what the error was.
-                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+                Debug.LogError($"AdvanceGameWithCheckData: Failed to Deserialize json {json} - {result.ToString()}");
             }
             
         }

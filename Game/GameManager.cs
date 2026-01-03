@@ -1017,6 +1017,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void PerformStartOfGameTasks2()
         {
+            performedStartOfGameTasks++;
             if (performedStartOfGameTasks < expectedPerformStartOfGameTasks)
             {
                 AddToConsole($"Performed Start of Game tasks: {performedStartOfGameTasks}/{expectedPerformStartOfGameTasks}");
@@ -1207,7 +1208,7 @@ namespace ThisIsBennyK.TexasHoldEm
             }
             else
             {
-                Debug.LogError($"Failed to deserialize OnPlayerHandReady JSON: {json}");
+                Debug.LogError($"OnPlayerHandReady: Failed to deserialize OnPlayerHandReady JSON: {json}");
             }
             
             Debug.Log($"=== OnPlayerHandReady complete ===");
@@ -1234,6 +1235,7 @@ namespace ThisIsBennyK.TexasHoldEm
         public void PerformStartOfRoundTasks()
         {
 
+            Debug.Log("=== Trying to perform start of round tasks ===");
             if(performedStartOfRoundTasks != 0 || expectedPerformStartOfRoundTasks != 0)
                 return;
 
@@ -1254,8 +1256,12 @@ namespace ThisIsBennyK.TexasHoldEm
             foreach (Player player in Players)
             {
                 if (!player.HasOwner)
+                {
+                    AddToConsole($"Skipping start tasks for player {player.PlayerNum}");
                     continue;
+                }
 
+                expectedPerformStartOfRoundTasks++;
                 if (player.PlayerNum == smallBlindPlayer)
                     player.SendToOwner(nameof(Player.PerformSmallBlindTasks));
                 else if (player.PlayerNum == bigBlindPlayer)
@@ -1267,6 +1273,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void PerformStartOfRoundTasks2()
         {
+            performedStartOfRoundTasks++;
             if (performedStartOfRoundTasks < expectedPerformStartOfRoundTasks)
             {
                 AddToConsole($"Performed Start of Round tasks: {performedStartOfGameTasks}/{expectedPerformStartOfGameTasks}");
@@ -1947,7 +1954,7 @@ namespace ThisIsBennyK.TexasHoldEm
                     Debug.LogError($"Unexpected result when deserializing json {json}");
                 }
             } else {
-                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+                Debug.LogError($"OnPlayerChoseOptionWithStatus: Failed to Deserialize json {json} - {result.ToString()}");
             }
         }
 
