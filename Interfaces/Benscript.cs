@@ -177,11 +177,6 @@ namespace ThisIsBennyK.TexasHoldEm
                 SendCustomNetworkEvent(NetworkEventTarget.Owner, method);
         }
 
-        private int GetStringSize(string str)
-        {
-            return (str.Length + 1) * 2;
-        }
-
         public void SendToOwnerWithParam(string method, string param)
         {
             // VRC devs being stupid

@@ -1977,7 +1977,13 @@ namespace ThisIsBennyK.TexasHoldEm
         public void PerformStartOfTurnTasks()
         {
             Debug.Log($"^^^^^^^^^^^^^^ CUR PLAYER IS P{curPlayerIdx} ^^^^^^^^^^^^^^");
-            Players[curPlayerIdx].SendToOwner(nameof(Player.PerformStartOfTurnTasks));
+
+            var startOfTurnData = new DataDictionary();
+            startOfTurnData.Add("OwnerAtTable", OwnerAtTable);
+            startOfTurnData.Add("CurStreet", curStreet);
+            startOfTurnData.Add("TurnJingleIsPlaying", TurnJingle.gameObject.GetComponent<AudioSource>().isPlaying);
+
+            Players[curPlayerIdx].SendToOwnerWithParam(nameof(Player.PerformStartOfTurnTasks), startOfTurnData);
         }
 
         public void GoToNextDealer()
