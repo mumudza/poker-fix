@@ -7,9 +7,6 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDK3.Components;
-using VRC.SDK3.Data;
-using VRC.SDK3.StringLoading;
-using VRC.SDK3.UdonNetworkCalling;  
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -66,12 +63,6 @@ namespace ThisIsBennyK.TexasHoldEm
 
         private bool justPickedUp = false;
 
-        public void SetCardIndices(int idx1, int idx2)
-        {
-            cardIdx1 = idx1;
-            cardIdx2 = idx2;
-        }
-
         public override void Start()
         {
             lastPosition = transform.position;
@@ -80,9 +71,15 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void Update()
         {
-            // Cards are now received via events instead of polling in Update()
-            // This eliminates race conditions and improves performance
-            
+            // Try to get drawn cards as fast as possible when the manager is dealing them
+            // REMARK: This is a terrible solution -- but we can't afford too many network calls to make this more efficient
+            // and we barely have anything running in update loops anyway
+            if (OwnedByLocal && ParentPlayer.Manager.GameStarted)
+            {
+                if (cardIdx1 == -1 || cardIdx2 == -1 || cardIdx1 == cardIdx2)
+                    ReceiveCards();
+            }
+
             if (Pickup.IsHeld)
                 lastPosition = transform.position;
         }
@@ -144,171 +141,6 @@ namespace ThisIsBennyK.TexasHoldEm
             else
                 ResetCards();
         }
-
-        [NetworkCallable]
-        public void OnCardsReady(string json)
-        {
-            Debug.Log($"=== Player {ParentPlayer.PlayerNum} OnCardsReady ===");
-            Debug.Log($"Received JSON: {json}");
-            
-            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
-            {
-                // Deserialization succeeded! Let's figure out what we've got.
-                if (result.TokenType == TokenType.DataDictionary)
-                {
-                    Debug.Log($"Successfully deserialized as a dictionary with {result.DataDictionary.Count} items.");
-                    // Use the passed status instead of accessing local field
-                    DataList indices = result.DataDictionary["indices"].DataList;
-
-                    if (ParentPlayer.LateJoiner)
-                    {
-                        Debug.Log($"Player {ParentPlayer.PlayerNum} is a late joiner, skipping card setup");
-                        return;
-                    }
-                                            
-                    if (indices == null || indices.Count < Hand.Size)
-                    {
-                        Debug.LogError($"Player {ParentPlayer.PlayerNum} received invalid card indices: expected {Hand.Size}, got {(indices != null ? indices.Count : 0)}");
-                        // Don't request cards again - this could cause infinite loops
-                        // Instead, log the error and return
-                        return;
-                    }
-                    
-                    // Safely extract and validate card indices
-                    double newCardIdx1Double = indices[0].Double;
-                    double newCardIdx2Double = indices[1].Double;
-
-                    int newCardIdx1 = (int)newCardIdx1Double;
-                    int newCardIdx2 = (int)newCardIdx2Double;
-                    
-                    Debug.Log($"Player {ParentPlayer.PlayerNum} received card indices: card1={newCardIdx1}, card2={newCardIdx2}");
-                    
-                    // Validate card indices before assigning them
-                    if (newCardIdx1 == -1 || newCardIdx2 == -1)
-                    {
-                        Debug.LogError($"Player {ParentPlayer.PlayerNum} received invalid card indices: card1={newCardIdx1}, card2={newCardIdx2}");
-                        return;
-                    }
-                    
-                    if (newCardIdx1 == newCardIdx2)
-                    {
-                        Debug.LogError($"Player {ParentPlayer.PlayerNum} received duplicate card indices: both={newCardIdx1}");
-                        return;
-                    }
-                    
-                    // Assign validated card indices
-                    cardIdx1 = newCardIdx1;
-                    cardIdx2 = newCardIdx2;
-                    
-                    Debug.Log($"Player {ParentPlayer.PlayerNum} assigned card indices: card1={cardIdx1}, card2={cardIdx2}");
-                    
-                    // Now safely get and setup the card objects
-                    SetupCardObjects();
-
-                    // Send completion event to GameManager using proper event communication
-                    var completionData = new DataDictionary();
-                    completionData.Add("playerNum", ParentPlayer.PlayerNum);
-                    completionData.Add("card1Idx", cardIdx1);
-                    completionData.Add("card2Idx", cardIdx2);
-                    completionData.Add("ready", true);
-                    
-                    Debug.Log($"Player {ParentPlayer.PlayerNum} sending hand ready event to GameManager");
-                    
-                    // Send event directly to GameManager instead of trying to execute callback string
-                    ParentPlayer.Manager.SendToOwnerWithParam(nameof(GameManager.OnPlayerHandReady), completionData);
-                    Serialize();
-
-                }
-                else 
-                {
-                    Debug.LogError($"Unexpected result when deserializing json {json}");
-                }
-            } else {
-                // Deserialization failed. Let's see what the error was.
-                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
-            }
-            
-            Debug.Log($"=== Player {ParentPlayer.PlayerNum} OnCardsReady complete ===");
-        }
-
-        public void SetupCardObjects()
-        {
-            Debug.Log($"=== Player {ParentPlayer.PlayerNum} SetupCardObjects ===");
-            Debug.Log($"Setting up cards: cardIdx1={cardIdx1}, cardIdx2={cardIdx2}, OwnerID={OwnerID}");
-            
-            // Reset card components first
-            card1Comp = null;
-            card2Comp = null;
-            
-            // Get card 1
-            if (cardIdx1 != -1)
-            {
-                GameObject card1Obj = ParentPlayer.Manager.GameDeck.GetCardOf(OwnerID, cardIdx1);
-                if (card1Obj != null)
-                {
-                    card1Comp = card1Obj.GetComponent<Card>();
-                    if (card1Comp != null)
-                    {
-                        card1Comp.OwnByLocal();
-                        card1Comp.Deserialize();
-                        Debug.Log($"Player {ParentPlayer.PlayerNum} successfully set up card 1 (index {cardIdx1})");
-                    }
-                    else
-                    {
-                        Debug.LogError($"Player {ParentPlayer.PlayerNum} failed to get Card component for index {cardIdx1}");
-                    }
-                }
-                else
-                {
-                    Debug.LogError($"Player {ParentPlayer.PlayerNum} failed to get card object for index {cardIdx1}");
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"Player {ParentPlayer.PlayerNum} has invalid card index 1: {cardIdx1}");
-            }
-            
-            // Get card 2
-            if (cardIdx2 != -1)
-            {
-                GameObject card2Obj = ParentPlayer.Manager.GameDeck.GetCardOf(OwnerID, cardIdx2);
-                if (card2Obj != null)
-                {
-                    card2Comp = card2Obj.GetComponent<Card>();
-                    if (card2Comp != null)
-                    {
-                        card2Comp.OwnByLocal();
-                        card2Comp.Deserialize();
-                        Debug.Log($"Player {ParentPlayer.PlayerNum} successfully set up card 2 (index {cardIdx2})");
-                    }
-                    else
-                    {
-                        Debug.LogError($"Player {ParentPlayer.PlayerNum} failed to get Card component for index {cardIdx2}");
-                    }
-                }
-                else
-                {
-                    Debug.LogError($"Player {ParentPlayer.PlayerNum} failed to get card object for index {cardIdx2}");
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"Player {ParentPlayer.PlayerNum} has invalid card index 2: {cardIdx2}");
-            }
-            
-            // Validate that we have both cards
-            if (card1Comp == null || card2Comp == null)
-            {
-                Debug.LogError($"Player {ParentPlayer.PlayerNum} failed to set up complete hand. Card1: {(card1Comp != null ? "OK" : "MISSING")}, Card2: {(card2Comp != null ? "OK" : "MISSING")}");
-            }
-            else
-            {
-                Debug.Log($"Player {ParentPlayer.PlayerNum} successfully set up complete hand with cards: {cardIdx1}, {cardIdx2}");
-            }
-            
-            Debug.Log($"=== Player {ParentPlayer.PlayerNum} SetupCardObjects complete ===");
-        }
-
 
         public void ResetCards()
         {
@@ -376,13 +208,9 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public override void Deserialize()
         {
-            
             // Receive the cards owned by the player that are for their hand
             if (OwnedByLocal)
-            {
-                bool shouldPickupable = !ParentPlayer.Manager.Processing && !(cardIdx1 == -1 && cardIdx2 == -1);
-                Pickup.pickupable = shouldPickupable;
-            }
+                Pickup.pickupable = !ParentPlayer.Manager.Processing && !(cardIdx1 == -1 && cardIdx2 == -1);
             // Otherwise only show the other players that they have cards if there's an owner here
             else
             {
@@ -417,7 +245,6 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 Pickup.pickupable = false;
             }
-            
         }
     }
 }

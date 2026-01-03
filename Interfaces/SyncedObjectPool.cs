@@ -48,11 +48,6 @@ namespace ThisIsBennyK.TexasHoldEm
             }
         }
 
-        public void AddToConsole(string text)
-        {
-            Debug.Log(text);
-        }
-
         public override void Start()
         {
             if (initialized)
@@ -105,7 +100,7 @@ namespace ThisIsBennyK.TexasHoldEm
             // If we've already spawned all the objects, don't do anything
             if (curSpawned == Objects.Length - 1)
             {
-                AddToConsole($"All objects in pool have been spawned. curSpawned: {curSpawned}, player: {player.displayName}");
+                Debug.Log($"All objects in pool have been spawned. curSpawned: {curSpawned}, player: {player.displayName}");
                 return;
             }
 
@@ -114,7 +109,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 // Check again for if we've spawned all the obejcts since that could change in the loop
                 if (curSpawned == Objects.Length - 1)
                 {
-                    AddToConsole($"All objects in pool have been spawned. curSpawned: {curSpawned}, player: {player.displayName} while looping");
+                    Debug.Log($"All objects in pool have been spawned. curSpawned: {curSpawned}, player: {player.displayName} while looping");
                     break;
                 }
 
@@ -124,10 +119,10 @@ namespace ThisIsBennyK.TexasHoldEm
                 // ...and spawn and give the object to the other player
 
                 int objIdx = spawnOrder[curSpawned];
-                AddToConsole($"Spawned objIdx: {objIdx} for player: {player.displayName}");
+                Debug.Log($"Spawned objIdx: {objIdx} for player: {player.displayName}");
 
                 TransferOwnershipTo(player, objIdx);
-                AddToConsole($"Transferred object ownership of objIdx: {objIdx} to player: {player.displayName}");
+                Debug.Log($"Transferred object ownership of objIdx: {objIdx} to player: {player.displayName}");
             }
 
             Serialize();

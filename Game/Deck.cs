@@ -7,9 +7,6 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
-using VRC.SDK3.Data;
-using VRC.SDK3.StringLoading;
-using VRC.SDK3.UdonNetworkCalling;  
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -206,109 +203,6 @@ namespace ThisIsBennyK.TexasHoldEm
         public void Shuffle() => pool.Shuffle();
 
         public void DrawCardsFor(VRCPlayerApi player, int numCards) => pool.RequestObjectsFor(player, numCards);
-
-        public void DrawCardsForPlayer(VRCPlayerApi player, int numCards)
-        {
-            // Use the existing generic pool functionality
-            pool.RequestObjectsFor(player, numCards);            
-        }
-
-        public void NotifyPlayersOfCardOwnership()
-        {
-            // Go through all players and notify them if they have new cards
-            foreach (Player player in Manager.Players)
-            {
-                if (player.HasOwner)
-                {
-                    int[] cardIndices = GetCardIndicesOf(player.OwnerID);
-                    if (cardIndices != null && cardIndices.Length > 0)
-                    {
-                        // Only send if we have the right number of cards for a hand
-                        if (cardIndices.Length >= Hand.Size)
-                        {
-                            // Filter out community cards to get only hole cards
-                            int[] holeCardIndices = GetHoleCardIndices(cardIndices);
-                            
-                            if (holeCardIndices != null && holeCardIndices.Length >= Hand.Size)
-                            {
-                                var onCardsReadyData = new DataDictionary();
-                                var indicesData = new DataList();
-                                foreach (int idx in holeCardIndices)
-                                {
-                                    indicesData.Add(idx);
-                                }
-                                onCardsReadyData.Add("indices", indicesData);
-
-                                // Send event to the specific player
-                                player.Hand.SendToOwnerWithParam(
-                                    nameof(player.Hand.OnCardsReady), 
-                                    onCardsReadyData
-                                );
-                                
-                                Debug.Log($"Notified player {player.PlayerNum} of cards: {holeCardIndices[0]}, {holeCardIndices[1]}");
-                            }
-                            else
-                            {
-                                Debug.LogWarning($"Player {player.PlayerNum} doesn't have enough hole cards: {holeCardIndices}");
-                            }
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"Player {player.PlayerNum} has insufficient card count: {cardIndices.Length}");
-                        }
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"Player {player.PlayerNum} has no card ownership data");
-                    }
-                }
-            }
-        }
-
-        private int[] GetHoleCardIndices(int[] allCardIndices)
-        {
-            if (allCardIndices == null || allCardIndices.Length == 0)
-                return null;
-
-            Debug.Log($"GetHoleCardIndices: Processing {allCardIndices.Length} card indices for player");
-
-            // Filter out community cards to get only hole cards
-            int[] holeCards = new int[Hand.Size];
-            int holeCardCount = 0;
-
-            foreach (int cardIdx in allCardIndices)
-            {
-                Debug.Log($"Checking card index {cardIdx}: IsCommunityCard={Manager.IsCommunityCard(cardIdx)}");
-                
-                if (!Manager.IsCommunityCard(cardIdx))
-                {
-                    if (holeCardCount < Hand.Size)
-                    {
-                        holeCards[holeCardCount] = cardIdx;
-                        holeCardCount++;
-                        Debug.Log($"Added hole card {holeCardCount}: index {cardIdx}");
-                    }
-                    else
-                    {
-                        // Player has more than Hand.Size cards, which shouldn't happen
-                        Debug.LogError($"Player has more than {Hand.Size} hole cards. Total cards: {allCardIndices.Length}, Hole cards found: {holeCardCount}");
-                        break;
-                    }
-                }
-            }
-
-            // If we found the right number of hole cards, return them
-            if (holeCardCount == Hand.Size)
-            {
-                Debug.Log($"Successfully found {Hand.Size} hole cards: [{holeCards[0]}, {holeCards[1]}]");
-                return holeCards;
-            }
-            else
-            {
-                Debug.LogWarning($"Expected {Hand.Size} hole cards but found {holeCardCount} from {allCardIndices.Length} total cards");
-                return null;
-            }
-        }
 
         public int[] GetCardIndices() => pool.GetOwnedObjectIndicesFor(LocalID);
         public int[] GetCardIndicesOf(int playerID) => pool.GetOwnedObjectIndicesFor(playerID);
