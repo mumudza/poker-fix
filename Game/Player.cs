@@ -690,7 +690,8 @@ namespace ThisIsBennyK.TexasHoldEm
             ForceBigBlind();
         }
 
-        public void PerformStartOfTurnTasks()
+        [NetworkCallable]
+        public void PerformStartOfTurnTasks(string json)
         {
             Debug.Log($"$$$$$$$$$$$$$$$$$$$$ P{PlayerNum} RARIN TO GO (Should be P{Manager.CurPlayerIndex}) $$$$$$$$$$$$$$$$$$$$$$$");
 
@@ -700,23 +701,47 @@ namespace ThisIsBennyK.TexasHoldEm
             Manager.SendToAll(nameof(Deserialize));
             Manager._DeserializeLocally();
 
-            if (Manager.CurStreet == GameManager.ShowdownStreet)
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
             {
-                ShowdownTimer.TimeInSeconds = ForcedReveal ? ForcedRevealTime : RevealChoiceTime;
-
-                if (!TickTockSFX.gameObject.GetComponent<AudioSource>().isPlaying)
+                // Deserialization succeeded! Let's figure out what we've got.
+                if (result.TokenType == TokenType.DataDictionary)
                 {
-                    ShowdownTimer.StartTimer();
-                    TickTockSFX.Play();
-                    Manager.TurnJingle.Play();
+                    Debug.Log($"Successfully deserialized as a dictionary with {result.DataDictionary.Count} items.");
+                    // Use the passed status instead of accessing local field
+                    double currStreetDouble = result.DataDictionary["CurStreet"].Double;
+                    int curStreet = (int)currStreetDouble;
+                    bool ownerAtTable = result.DataDictionary["OwnerAtTable"].Boolean;
+                    bool turnJingleIsPlaying = result.DataDictionary["TurnJingleIsPlaying"].Boolean;
+
+                    if (curStreet == GameManager.ShowdownStreet)
+                    {
+                        ShowdownTimer.TimeInSeconds = ForcedReveal ? ForcedRevealTime : RevealChoiceTime;
+
+                        if (!TickTockSFX.gameObject.GetComponent<AudioSource>().isPlaying)
+                        {
+                            ShowdownTimer.StartTimer();
+                            TickTockSFX.Play();
+                            Manager.TurnJingle.Play();
+                        }
+                    }
+
+                    if (!ownerAtTable)
+                        Manager.SendToOwner(nameof(Disown));
+
+                    if (curStreet != GameManager.ShowdownStreet && !turnJingleIsPlaying)
+                        Manager.TurnJingle.Play();
+
+
                 }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                // Deserialization failed. Let's see what the error was.
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
             }
 
-            if (!Manager.OwnerAtTable)
-                Manager.SendToOwner(nameof(Disown));
-
-            if (Manager.CurStreet != GameManager.ShowdownStreet && !Manager.TurnJingle.gameObject.GetComponent<AudioSource>().isPlaying)
-                Manager.TurnJingle.Play();
         }
 
         private void RefreshCards()
