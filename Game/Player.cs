@@ -767,8 +767,8 @@ namespace ThisIsBennyK.TexasHoldEm
             curStatus = statusToSend;
             var actionData = new DataDictionary();
             actionData.Add("status", statusToSend);
-            AddPostSerialListenerWithParam(nameof(AdvanceGameWithStatus), actionData);
             Serialize();
+            SendToOwnerWithParam(nameof(AdvanceGameWithStatus), actionData);
         }
 
         public void OnBetActionChosen()
@@ -812,8 +812,8 @@ namespace ThisIsBennyK.TexasHoldEm
             betData.Add("status", statusToSend);
             betData.Add("betAmount", bets[currentStreet]);
             betData.Add("street", currentStreet);
-            AddPostSerialListenerWithParam(nameof(AdvanceGameWithBetData), betData);
             Serialize();
+            SendToOwnerWithParam(nameof(AdvanceGameWithBetData), betData);
         }
 
         public void OnCheckActionChosen()
@@ -839,8 +839,8 @@ namespace ThisIsBennyK.TexasHoldEm
             var checkData = new DataDictionary();
             checkData.Add("status", statusToSend);
             checkData.Add("street", currentStreet);
-            AddPostSerialListenerWithParam(nameof(AdvanceGameWithCheckData), checkData);
             Serialize();
+            SendToOwnerWithParam(nameof(AdvanceGameWithCheckData), checkData);
         }
 
         // EVENT: Called by GameManager to reset local status
