@@ -8,6 +8,12 @@ using System;
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
+using VRC.Udon;
+using VRC.Udon.Common;
+using VRC.Udon.Common.Interfaces;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -290,6 +296,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         private Translatable[] translatables = null;
 
+
         public int NumPlayers
         {
             get
@@ -414,6 +421,9 @@ namespace ThisIsBennyK.TexasHoldEm
                 for (int i = 0; i < Players.Length; ++i)
                 {
                     Player player = Players[i];
+
+                    AddToConsole("Checking ReadyToAdvanceStreets");
+                    AddToConsole($"Player idx/playerNum: {i}{player.PlayerNum} Has owner: {player.HasOwner}, Has money: {player.HasMoney}, status: {GetCurStatus(i)}");
 
                     if (!player.HasOwner || player.LateJoiner || (!player.HasMoney && curStreet != ShowdownStreet) || GetCurStatus(i) == FoldedStatus)
                         continue;
@@ -664,6 +674,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 roundEndTimer -= Time.deltaTime;
                 
+
                 if (roundEndTimer <= 0f)
                 {
                     Serialize();
@@ -934,11 +945,18 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void UpdateJoinedPlayers()
         {
-            //Serialize();
-            
             foreach (Player player in Players)
                 player.ModerationPanel.SendToOwner(nameof(ModerationPanel.ClearVotesForNewJoiners));
 
+            // FIX: Add post-serial listener so deserialization happens AFTER state is synced
+            // Always use post-serial listener for consistent behavior across all clients
+            AddPostSerialListener(nameof(UpdateJoinedPlayersPostSerial));
+            Serialize();
+        }
+
+        public void UpdateJoinedPlayersPostSerial()
+        {
+            // FIX: Now deserialization happens after state is synchronized to all clients
             SendToAll(nameof(Deserialize));
         }
 
@@ -1487,11 +1505,22 @@ namespace ThisIsBennyK.TexasHoldEm
 
             firstWinner = Player.InvalidNum;
 
+            if (flop1CardIdx == -1 || flop2CardIdx == -1 || flop3CardIdx == -1 || 
+                turnCardIdx == -1 || riverCardIdx == -1)
+            {
+                Debug.LogError("Community card indices are not properly set. Cannot calculate best hands.");
+            }
+
             Card flop1 = GameDeck.GetCard(flop1CardIdx).GetComponent<Card>();
             Card flop2 = GameDeck.GetCard(flop2CardIdx).GetComponent<Card>();
             Card flop3 = GameDeck.GetCard(flop3CardIdx).GetComponent<Card>();
             Card turn = GameDeck.GetCard(turnCardIdx).GetComponent<Card>();
             Card river = GameDeck.GetCard(riverCardIdx).GetComponent<Card>();
+
+            if (flop1 == null || flop2 == null || flop3 == null || turn == null || river == null)
+            {
+                Debug.LogError("One or more community card components are null. Cannot calculate best hands.");
+            }
 
             Debug.Log($"Flop #1: {flop1.FaceName}, Flop #2: {flop2.FaceName}, Flop #3: {flop3.FaceName}");
             Debug.Log($"Turn: {turn.FaceName}, River: {river.FaceName}");
@@ -1530,8 +1559,18 @@ namespace ThisIsBennyK.TexasHoldEm
                     hole2Idx = cardIndices[1];
                 }
 
+                if (hole1Idx == -1 || hole2Idx == -1)
+                {
+                    Debug.LogWarning($"Player {player.PlayerNum} has invalid hole card indices: {hole1Idx}, {hole2Idx}");
+                }
+
                 Card hole1 = GameDeck.GetCardOf(player.OwnerID, hole1Idx).GetComponent<Card>();
                 Card hole2 = GameDeck.GetCardOf(player.OwnerID, hole2Idx).GetComponent<Card>();
+
+                if (hole1 == null || hole2 == null)
+                {
+                    Debug.LogWarning($"Player {player.PlayerNum} has null hole card components");
+                }
 
                 Debug.Log($"[P{player.PlayerNum}] Hole #1: {hole1.FaceName}, Hole #2: {hole2.FaceName}");
 
@@ -1721,11 +1760,45 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void OnPlayerChoseOption()
         {
+            AddToConsole($"Setting player idx {curPlayerIdx} status in manager to {Players[curPlayerIdx].CurStatus}");
             SetCurStatus(curPlayerIdx, Players[curPlayerIdx].CurStatus);
             Serialize();
 
             AdvanceFromPlayer();
         }
+
+        // RACE FIX: New method to handle player choice with passed status
+        // Includes validation to ensure Player.curStatus and GameManager.curStatuses stay synchronized
+        [NetworkCallable]
+        public void OnPlayerChoseOptionWithStatus(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
+            {
+                if (result.TokenType == TokenType.DataDictionary)
+                {
+                    double statusDouble = result.DataDictionary["status"].Double;
+                    byte status = (byte)statusDouble;
+                    
+                    AddToConsole($"Setting player idx {curPlayerIdx} status in manager to {status} (received from player)");
+                    
+                    // Update GameManager's view
+                    SetCurStatus(curPlayerIdx, status);
+                    
+                    // RACE FIX: Verify Player's status matches
+                    Player currentPlayer = Players[curPlayerIdx];
+                    
+                    Serialize();
+                    AdvanceFromPlayer();
+                }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
+            }
+        }
+
 
         public void AdvanceFromPlayer()
         {
