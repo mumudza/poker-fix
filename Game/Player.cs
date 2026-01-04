@@ -304,6 +304,21 @@ namespace ThisIsBennyK.TexasHoldEm
             base.Start();
         }
 
+        private void Update()
+        {
+            if (waitingForAck)
+            {
+                UpdateAckFlag();
+                return;
+            }
+        }
+
+        private void SerializeSync()
+        {
+            SerializeOwnerSync(1);
+            Manager.RequestAckForOwnerSync(nameof(AcknowledgeOwnerSync));
+        }
+
         public override void Deserialize()
         {
             if (OwnedByLocal)
@@ -477,7 +492,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 PerformEndOfRoundTasks();
             }
 
-            Serialize();
+            SerializeSync();
 
             // REMARK: LocalSettingsPanel doesn't inherit from Benscript so this has to be done manually
             LocalSettingsPanel.SFX.Volume = LocalSettingsPanel.Settings.SFXVolume;
@@ -516,8 +531,8 @@ namespace ThisIsBennyK.TexasHoldEm
             Manager.SendToOwner(nameof(GameManager.UpdateJoinedPlayers));
 
             Debug.Log($"************* Called before P{PlayerNum} left *************");
-            AddPostSerialListener(nameof(OnLeftTable));
-            Serialize();
+            SerializeSync();
+            SendToOwner(nameof(OnLeftTable));
 
             foreach (OutsiderLocalSettings panel in Manager.OutsiderLocalSettingsPanels)
                 panel._EnableOutsiderSettings();
@@ -525,7 +540,7 @@ namespace ThisIsBennyK.TexasHoldEm
             // In case it was left on due to leaving right before the Showdown turn ended
             TickTockSFX.Stop();
 
-            AddPostSerialListener(nameof(InformOtherManagersOfChange));
+            SendToOwner(nameof(InformOtherManagersOfChange));
         }
 
         public void OnLeftTable()
@@ -665,7 +680,7 @@ namespace ThisIsBennyK.TexasHoldEm
             mainPotWon = false;
             numPotsWon = 0;
             
-            Serialize();
+            SerializeSync();
         }
 
         public void PerformStartOfRoundTasks()
@@ -674,7 +689,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             ++curRound;
             revealChosen = true;
-            Serialize();
+            SerializeSync();
         }
 
         public void PerformSmallBlindTasks()
@@ -792,7 +807,7 @@ namespace ThisIsBennyK.TexasHoldEm
             curStatus = statusToSend;
             var actionData = new DataDictionary();
             actionData.Add("status", statusToSend);
-            Serialize();
+            SerializeSync();
             SendToOwnerWithParam(nameof(AdvanceGameWithStatus), actionData);
         }
 
@@ -837,7 +852,7 @@ namespace ThisIsBennyK.TexasHoldEm
             betData.Add("status", statusToSend);
             betData.Add("betAmount", bets[currentStreet]);
             betData.Add("street", currentStreet);
-            Serialize();
+            SerializeSync();
             SendToOwnerWithParam(nameof(AdvanceGameWithBetData), betData);
         }
 
@@ -864,7 +879,7 @@ namespace ThisIsBennyK.TexasHoldEm
             var checkData = new DataDictionary();
             checkData.Add("status", statusToSend);
             checkData.Add("street", currentStreet);
-            Serialize();
+            SerializeSync();
             SendToOwnerWithParam(nameof(AdvanceGameWithCheckData), checkData);
         }
 
@@ -965,7 +980,7 @@ namespace ThisIsBennyK.TexasHoldEm
         {
             curStatus = GameManager.NoStatus;
             Manager.AddToConsole($"Changed curStatus to {curStatus} for player {PlayerNum}");
-            Serialize();
+            SerializeSync();
         }
 
         private void ForceSmallBlind()
@@ -978,7 +993,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             bets[GameManager.PreflopStreet] = amount;
 
-            Serialize();
+            SerializeSync();
         }
 
         private void ForceBigBlind()
@@ -991,7 +1006,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             bets[GameManager.PreflopStreet] = amount;
 
-            Serialize();
+            SerializeSync();
         }
 
         public void TakeRoundResults()
@@ -1011,7 +1026,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 Bankroll.AddChips(Manager.SumOfAllBets);
                 winByDefault = true;
                 WinnerFX.PlayForAll();
-                Serialize();
+                SerializeSync();
 
                 return;
             }
@@ -1109,13 +1124,13 @@ namespace ThisIsBennyK.TexasHoldEm
             if (numPotsWon > 0)
                 WinnerFX.PlayForAll();
 
-            Serialize();
+            SerializeSync();
         }
 
         public void JoinFullyFromLateness()
         {
             lateJoiner = false;
-            Serialize();
+            SerializeSync();
         }
 
         private string BuildWinString()

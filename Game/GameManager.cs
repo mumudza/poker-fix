@@ -657,6 +657,12 @@ namespace ThisIsBennyK.TexasHoldEm
 
         private void Update()
         {
+            if (waitingForAck)
+            {
+                UpdateAckFlag();
+                return;
+            }
+
             if (!OwnedByLocal)
                 return;
 
@@ -677,7 +683,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 if (roundEndTimer <= 0f)
                 {
-                    Serialize();
+                    SerializeSyncAllPlayers();
                     OnRoundEndedTimeout();
                 }
             }
@@ -934,7 +940,7 @@ namespace ThisIsBennyK.TexasHoldEm
             waitingForCardsReturned = false;
             roundEnded = false;
 
-            Serialize();
+            SerializeSyncAllPlayers();
 
             SendToAll(nameof(ResetRaisePitch));
             SendToAll(nameof(ResetAllInPitch));
@@ -981,8 +987,8 @@ namespace ThisIsBennyK.TexasHoldEm
             curPlayerIdx = curOwnerIdx;
             curDealerIdx = curOwnerIdx - 1 < 0 ? Players.Length - 1 : curOwnerIdx - 1;
 
-            AddPostSerialListener(nameof(PerformStartOfGameTasks));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(PerformStartOfGameTasks));
         }
 
         public void PerformStartOfGameTasks()
@@ -994,7 +1000,7 @@ namespace ThisIsBennyK.TexasHoldEm
             }
 
             waitingForNextGame = true;
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void WaitForNextGame()
@@ -1018,7 +1024,7 @@ namespace ThisIsBennyK.TexasHoldEm
             if (allReady)
             {
                 waitingForNextGame = false;
-                Serialize();
+                SerializeSyncAllPlayers();
 
                 GoToNextRound();
             }
@@ -1033,15 +1039,15 @@ namespace ThisIsBennyK.TexasHoldEm
             ClearPots();
             CommCardInfoDisplay.SendToAll(nameof(CommunityCardInfoDisplay.ResetOpacities));
 
-            AddPostSerialListener(nameof(DetermineRoundPlayers));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(DetermineRoundPlayers));
         }
 
         public void DetermineRoundPlayers()
         {
             waitingForPlayersDetermined = true;
-            AddPostSerialListener(nameof(ManageChangingPlayers));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(ManageChangingPlayers));
         }
 
         public void ManageChangingPlayers()
@@ -1063,17 +1069,15 @@ namespace ThisIsBennyK.TexasHoldEm
             if (NumLateJoiners == 0 && NumPlayers == NumPlayersAfterRound)
             {
                 waitingForPlayersDetermined = false;
-
-                AddPostSerialListener(nameof(ReturnAllCards));
-                Serialize();
+                SerializeSyncAllPlayers();
+                SendToOwner(nameof(ReturnAllCards));
             }
         }
 
         public void ReturnAllCards()
         {
             waitingForCardsReturned = true;
-            Serialize();
-            
+            SerializeSyncAllPlayers();            
             GameDeck.ReturnAll();
         }
 
@@ -1083,8 +1087,8 @@ namespace ThisIsBennyK.TexasHoldEm
             {
                 waitingForCardsReturned = false;
 
-                AddPostSerialListener(nameof(DealForRound));
-                Serialize();
+                SerializeSyncAllPlayers();
+                SendToOwner(nameof(DealForRound));
             }
         }
 
@@ -1102,8 +1106,8 @@ namespace ThisIsBennyK.TexasHoldEm
             CalculateAllBestHands();
             HardResetStatuses();
 
-            AddPostSerialListener(nameof(PerformStartOfRoundTasks));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(PerformStartOfRoundTasks));
         }
 
         public void PerformStartOfRoundTasks()
@@ -1137,7 +1141,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             waitingForNextRound = true;
             ++curRound;
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void WaitForNextRound()
@@ -1178,7 +1182,7 @@ namespace ThisIsBennyK.TexasHoldEm
             if (allReady && numCurBlinds >= numExpectedBlinds)
             {
                 waitingForNextRound = false;
-                Serialize();
+                SerializeSyncAllPlayers();
 
                 GoToNextStreet();
             }
@@ -1758,11 +1762,37 @@ namespace ThisIsBennyK.TexasHoldEm
             return NoHand;
         }
 
+
+        private void SerializeSyncAllPlayers()
+        {
+            SerializeOwnerSync(GetOwnedPlayers());
+            RequestAckForAllPlayers();
+        }
+
+        private int GetOwnedPlayers()
+        {
+            int ownedPlayers = 0;
+            foreach (Player player in Players)
+            {
+                if (player.HasOwner)
+                    ownedPlayers++;
+            }
+            return ownedPlayers;
+        }
+
+        private void RequestAckForAllPlayers()
+        {
+            foreach (Player player in Players)
+            {
+                player.RequestAckForOwnerSync(nameof(AcknowledgeOwnerSync));
+            }
+        }
+
         public void OnPlayerChoseOption()
         {
             AddToConsole($"Setting player idx {curPlayerIdx} status in manager to {Players[curPlayerIdx].CurStatus}");
             SetCurStatus(curPlayerIdx, Players[curPlayerIdx].CurStatus);
-            Serialize();
+            SerializeSyncAllPlayers();
 
             AdvanceFromPlayer();
         }
@@ -1901,7 +1931,7 @@ namespace ThisIsBennyK.TexasHoldEm
             else if (curStreet == RiverStreet)
                 CommunityCardAnimators[Card.River].RequestAnimation("Turn");
 
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void GoToNextPlayer()
@@ -1927,9 +1957,8 @@ namespace ThisIsBennyK.TexasHoldEm
 
             AddToConsole($"Used to be {prevPlayerIdx}, now {curPlayerIdx}");
 
-            AddPostSerialListener(nameof(PerformStartOfTurnTasks));
-
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(PerformStartOfTurnTasks));
         }
 
         // REMARK: Doesn't take money into account
@@ -2003,7 +2032,7 @@ namespace ThisIsBennyK.TexasHoldEm
                     break;
             }
 
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void CalculateSidePots()
@@ -2264,7 +2293,7 @@ namespace ThisIsBennyK.TexasHoldEm
             else
                 roundEndTimer = LongRoundEndTime;
 
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void OnRoundEndedTimeout()
@@ -2310,7 +2339,7 @@ namespace ThisIsBennyK.TexasHoldEm
         public void SetMidgameJoining(bool on)
         {
             midgameJoining = on;
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         public int GetVotes(int index)

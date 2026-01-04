@@ -13,6 +13,7 @@ using VRC.Udon.Common;
 using VRC.Udon.Common.Interfaces;
 using VRC.SDK3.Data;
 using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -35,6 +36,12 @@ namespace ThisIsBennyK.TexasHoldEm
         public int OwnerID => currentOwnerID;
         public int LocalID => Utilities.IsValid(LocalPlayer) ? LocalPlayer.playerId : InvalidPlayerID;
         public bool HasOwner => currentOwnerID != InvalidPlayerID && Utilities.IsValid(Owner) && currentOwnerID == Owner.playerId;
+
+        // Acknowledgement System Fields
+        private int waitingForAckCount = 0;
+        public bool waitingForAck = false;
+        private float ackTimeoutTimer = 0f;
+        private const float ackTimeoutSeconds = 1.0f;
 
         public virtual void Start()
         {
@@ -211,6 +218,78 @@ namespace ThisIsBennyK.TexasHoldEm
         {
             string value = SerializeParameterToString(param);
             SendToOwnerWithParam(method, value);
+        }
+
+        // ============================================
+        // Acknowledgement System
+        // ============================================
+
+        /// <summary>
+        /// Serializes data and waits for acknowledgements from players.
+        /// Call this when you need to ensure players have received the serialized data.
+        /// </summary>
+        /// <param name="expectedAcks">Number of acknowledgements expected from players who own seats/objects</param>
+        /// <returns>True if waiting for acknowledgements, false otherwise</returns>
+        public bool SerializeOwnerSync(int expectedAcks)
+        {
+            waitingForAck = true;
+            waitingForAckCount = expectedAcks;
+            ackTimeoutTimer = ackTimeoutSeconds;
+            
+            Serialize();
+            
+            return waitingForAck;
+        }
+
+        /// <summary>
+        /// Updates the acknowledgement flag and handles timeout.
+        /// Call this from your derived class's Update() method.
+        /// </summary>
+        public void UpdateAckFlag()
+        {
+            if (!waitingForAck)
+                return;
+
+            ackTimeoutTimer -= Time.deltaTime;
+
+            if (ackTimeoutTimer <= 0f)
+            {
+                Debug.LogWarning($"{gameObject.name}: Acknowledgement timeout after {ackTimeoutSeconds} seconds");
+                waitingForAck = false;
+                waitingForAckCount = 0;
+            }
+        }
+
+        /// <summary>
+        /// Network event sent to specific players requesting acknowledgement.
+        /// Players should only acknowledge if they own a seat or player object.
+        /// </summary>
+        [NetworkCallable]
+        public void RequestAckForOwnerSync(string ackFunction)
+        {
+            if (HasOwner)
+            {
+                SendCustomNetworkEvent(NetworkEventTarget.Owner, ackFunction);
+            }
+        }
+
+        /// <summary>
+        /// Network event sent back to owner when a player acknowledges.
+        /// </summary>
+        [NetworkCallable]
+        public void AcknowledgeOwnerSync()
+        {
+            if (!waitingForAck)
+                return;
+
+            waitingForAckCount--;
+
+            if (waitingForAckCount <= 0)
+            {
+                waitingForAck = false;
+                waitingForAckCount = 0;
+                Debug.Log($"{gameObject.name}: All acknowledgements received");
+            }
         }
     }
 }

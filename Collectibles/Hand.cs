@@ -116,6 +116,7 @@ namespace ThisIsBennyK.TexasHoldEm
                     cardIdx1 = cardIdxs[0];
                     cardIdx2 = cardIdxs[1];
                 }
+                Debug.Log($"ReceiveCards: Successfully received both cards: card1Idx={cardIdx1}, card2Idx={cardIdx2}");
 
                 if (cardIdx1 != -1)
                 {
@@ -144,6 +145,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void ResetCards()
         {
+            Debug.Log($"ResetCards BEGIN");
             cardIdx1 = -1;
             cardIdx2 = -1;
 
