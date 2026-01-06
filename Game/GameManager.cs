@@ -1787,6 +1787,7 @@ namespace ThisIsBennyK.TexasHoldEm
             {
                 if (player.HasOwner)
                 {
+                    player.SendToOwnerWithParam(nameof(DeserializeFromJson), SerializeToJson());
                     player.SendToOwnerWithParam(nameof(player.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
                     Debug.Log($"{gameObject.name}: Requested ack for player {player.PlayerNum}!");
                 }
@@ -2413,5 +2414,183 @@ namespace ThisIsBennyK.TexasHoldEm
         }
 
         public bool _CheckedAtShowdown(int playerIdx) => CurStreet >= ShowdownStreet && GetCurStatus(playerIdx) == CheckedStatus;
+
+        public string SerializeToJson()
+        {
+            var data = new VRC.SDK3.Data.DataDictionary();
+            
+            data.Add("StartingBankrolls", StartingBankrolls);
+            data.Add("boolBitSet", boolBitSet);
+            data.Add("curPlayerIdx", curPlayerIdx);
+            data.Add("curDealerIdx", curDealerIdx);
+            data.Add("curRound", curRound);
+            data.Add("curStreet", curStreet);
+            data.Add("curStatuses", curStatuses);
+            data.Add("firstWinner", firstWinner);
+            data.Add("prevWinners", prevWinners);
+            data.Add("roundEndTimer", roundEndTimer);
+            
+            data.Add("flop1CardIdx", flop1CardIdx);
+            data.Add("flop2CardIdx", flop2CardIdx);
+            data.Add("flop3CardIdx", flop3CardIdx);
+            data.Add("turnCardIdx", turnCardIdx);
+            data.Add("riverCardIdx", riverCardIdx);
+            
+            // Include Deck data
+            var deckData = new VRC.SDK3.Data.DataDictionary();
+            
+            var spawnOrderList = new VRC.SDK3.Data.DataList();
+            foreach (int order in GameDeck.pool.spawnOrder)
+                spawnOrderList.Add(order);
+            deckData.Add("spawnOrder", spawnOrderList);
+            
+            var deckOwnersList = new VRC.SDK3.Data.DataList();
+            foreach (int owner in GameDeck.pool.owners)
+                deckOwnersList.Add(owner);
+            deckData.Add("owners", deckOwnersList);
+            
+            deckData.Add("initialized", GameDeck.pool.initialized);
+            data.Add("deck", deckData);
+            
+            var bestFlopHandsList = new VRC.SDK3.Data.DataList();
+            var bestFlopScoresList = new VRC.SDK3.Data.DataList();
+            var bestFlopKickersList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < Players.Length; i++)
+            {
+                bestFlopHandsList.Add(bestFlopHands[i]);
+                bestFlopScoresList.Add(bestFlopScores[i]);
+                bestFlopKickersList.Add(bestFlopKickers[i]);
+            }
+            data.Add("bestFlopHands", bestFlopHandsList);
+            data.Add("bestFlopScores", bestFlopScoresList);
+            data.Add("bestFlopKickers", bestFlopKickersList);
+            
+            var bestTurnHandsList = new VRC.SDK3.Data.DataList();
+            var bestTurnScoresList = new VRC.SDK3.Data.DataList();
+            var bestTurnKickersList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < Players.Length; i++)
+            {
+                bestTurnHandsList.Add(bestTurnHands[i]);
+                bestTurnScoresList.Add(bestTurnScores[i]);
+                bestTurnKickersList.Add(bestTurnKickers[i]);
+            }
+            data.Add("bestTurnHands", bestTurnHandsList);
+            data.Add("bestTurnScores", bestTurnScoresList);
+            data.Add("bestTurnKickers", bestTurnKickersList);
+            
+            var bestRiverHandsList = new VRC.SDK3.Data.DataList();
+            var bestRiverScoresList = new VRC.SDK3.Data.DataList();
+            var bestRiverKickersList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < Players.Length; i++)
+            {
+                bestRiverHandsList.Add(bestRiverHands[i]);
+                bestRiverScoresList.Add(bestRiverScores[i]);
+                bestRiverKickersList.Add(bestRiverKickers[i]);
+            }
+            data.Add("bestRiverHands", bestRiverHandsList);
+            data.Add("bestRiverScores", bestRiverScoresList);
+            data.Add("bestRiverKickers", bestRiverKickersList);
+            
+            var winRankingsList = new VRC.SDK3.Data.DataList();
+            foreach (int rank in winRankings)
+                winRankingsList.Add(rank);
+            data.Add("winRankings", winRankingsList);
+            
+            var potLimitersList = new VRC.SDK3.Data.DataList();
+            var potLimitsList = new VRC.SDK3.Data.DataList();
+            var participantsPerPotList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < potLimiters.Length; i++)
+            {
+                potLimitersList.Add(potLimiters[i]);
+                potLimitsList.Add(potLimits[i]);
+                participantsPerPotList.Add(participantsPerPot[i]);
+            }
+            data.Add("potLimiters", potLimitersList);
+            data.Add("potLimits", potLimitsList);
+            data.Add("participantsPerPot", participantsPerPotList);
+            
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    
+                    StartingBankrolls = (int)dict["StartingBankrolls"].Double;
+                    boolBitSet = (byte)dict["boolBitSet"].Double;
+                    curPlayerIdx = (int)dict["curPlayerIdx"].Double;
+                    curDealerIdx = (int)dict["curDealerIdx"].Double;
+                    curRound = (int)dict["curRound"].Double;
+                    curStreet = (int)dict["curStreet"].Double;
+                    curStatuses = (ushort)dict["curStatuses"].Double;
+                    firstWinner = (int)dict["firstWinner"].Double;
+                    prevWinners = dict["prevWinners"].String;
+                    roundEndTimer = (float)dict["roundEndTimer"].Double;
+                    
+                    flop1CardIdx = (int)dict["flop1CardIdx"].Double;
+                    flop2CardIdx = (int)dict["flop2CardIdx"].Double;
+                    flop3CardIdx = (int)dict["flop3CardIdx"].Double;
+                    turnCardIdx = (int)dict["turnCardIdx"].Double;
+                    riverCardIdx = (int)dict["riverCardIdx"].Double;
+                    
+                    var bestFlopHandsList = dict["bestFlopHands"].DataList;
+                    var bestFlopScoresList = dict["bestFlopScores"].DataList;
+                    var bestFlopKickersList = dict["bestFlopKickers"].DataList;
+                    for (int i = 0; i < Players.Length; i++)
+                    {
+                        bestFlopHands[i] = (int)bestFlopHandsList[i].Double;
+                        bestFlopScores[i] = (long)bestFlopScoresList[i].Double;
+                        bestFlopKickers[i] = (long)bestFlopKickersList[i].Double;
+                    }
+                    
+                    var bestTurnHandsList = dict["bestTurnHands"].DataList;
+                    var bestTurnScoresList = dict["bestTurnScores"].DataList;
+                    var bestTurnKickersList = dict["bestTurnKickers"].DataList;
+                    for (int i = 0; i < Players.Length; i++)
+                    {
+                        bestTurnHands[i] = (int)bestTurnHandsList[i].Double;
+                        bestTurnScores[i] = (long)bestTurnScoresList[i].Double;
+                        bestTurnKickers[i] = (long)bestTurnKickersList[i].Double;
+                    }
+                    
+                    var bestRiverHandsList = dict["bestRiverHands"].DataList;
+                    var bestRiverScoresList = dict["bestRiverScores"].DataList;
+                    var bestRiverKickersList = dict["bestRiverKickers"].DataList;
+                    for (int i = 0; i < Players.Length; i++)
+                    {
+                        bestRiverHands[i] = (int)bestRiverHandsList[i].Double;
+                        bestRiverScores[i] = (long)bestRiverScoresList[i].Double;
+                        bestRiverKickers[i] = (long)bestRiverKickersList[i].Double;
+                    }
+                    
+                    var winRankingsList = dict["winRankings"].DataList;
+                    for (int i = 0; i < winRankings.Length; i++)
+                        winRankings[i] = (int)winRankingsList[i].Double;
+                    
+                    var potLimitersList = dict["potLimiters"].DataList;
+                    var potLimitsList = dict["potLimits"].DataList;
+                    var participantsPerPotList = dict["participantsPerPot"].DataList;
+                    for (int i = 0; i < potLimiters.Length; i++)
+                    {
+                        potLimiters[i] = (int)potLimitersList[i].Double;
+                        potLimits[i] = (int)potLimitsList[i].Double;
+                        participantsPerPot[i] = (int)participantsPerPotList[i].Double;
+                    }
+                    
+                    // Extract and deserialize Deck data
+                    if (dict.ContainsKey("deck"))
+                    {
+                        var deckDict = dict["deck"].DataDictionary;
+                        var deckJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(deckDict));
+                        GameDeck.DeserializeFromJson(deckJson);
+                    }
+                }
+            }            
+        }
     }
 }

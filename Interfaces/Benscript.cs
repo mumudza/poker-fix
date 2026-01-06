@@ -127,7 +127,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         protected string SerializeParameterToString(DataToken param)
         {
-            if (VRCJson.TrySerializeToJson(param, JsonExportType.Beautify, out DataToken json))
+            if (VRCJson.TrySerializeToJson(param, JsonExportType.Minify, out DataToken json))
             {
                 // Successfully serialized! We can immediately get the string out of the token and do something with it.
                 Debug.Log($"Successfully serialized to json: {json.String}");
@@ -221,6 +221,40 @@ namespace ThisIsBennyK.TexasHoldEm
         }
 
         // ============================================
+        // JSON State System
+        // ============================================
+
+        /// <summary>
+        /// Network event to request current JSON state from owner.
+        /// Non-owners call this to get latest state.
+        /// </summary>
+        /// 
+        
+        /*
+        [NetworkCallable]
+        public void RequestJsonState()
+        {
+            if (OwnedByLocal)
+            {
+                SendToAllWithParam(nameof(ReceiveJsonState), SerializeToJson());
+            }
+        }
+        */
+
+        /// <summary>
+        /// Network event to receive JSON state from owner.
+        /// Called when owner broadcasts their state.
+        /// </summary>
+        /// 
+        /*
+        [NetworkCallable]
+        public void ReceiveJsonState(string json)
+        {
+            DeserializeFromJson(json);
+        }
+        */
+
+        // ============================================
         // Acknowledgement System
         // ============================================
 
@@ -268,7 +302,6 @@ namespace ThisIsBennyK.TexasHoldEm
         public void RequestAckForOwnerSync(string ackFunction)
         {
             Debug.Log($"{gameObject.name}: Received RequestAckForOwnerSync, for function {ackFunction}!");
-            Serialize();
             SendCustomNetworkEvent(NetworkEventTarget.Owner, ackFunction);
         }
 

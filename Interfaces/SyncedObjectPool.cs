@@ -10,6 +10,10 @@ using VRC.SDK3.Components;
 using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
+using VRC.Udon.Common;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -20,16 +24,16 @@ namespace ThisIsBennyK.TexasHoldEm
         public bool DeactivateWithoutOwnership = true;
 
         [UdonSynced]
-        private int[] spawnOrder;
+        public int[] spawnOrder;
 
         [UdonSynced]
-        private int curSpawned = -1;
+        public int curSpawned = -1;
 
         [UdonSynced]
-        private int[] owners;
+        public int[] owners;
 
         [UdonSynced]
-        private bool initialized = false;
+        public bool initialized = false;
 
         public bool AnySpawned
         {
@@ -217,5 +221,53 @@ namespace ThisIsBennyK.TexasHoldEm
         }
 
         public bool IsOwned(int index) => owners[index] != InvalidPlayerID;
+
+        public string SerializeToJson()
+        {
+            var data = new VRC.SDK3.Data.DataDictionary();
+            
+            var spawnOrderList = new VRC.SDK3.Data.DataList();
+            foreach (int idx in spawnOrder)
+                spawnOrderList.Add(idx);
+            data.Add("spawnOrder", spawnOrderList);
+            
+            data.Add("curSpawned", curSpawned);
+            
+            var ownersList = new VRC.SDK3.Data.DataList();
+            foreach (int owner in owners)
+                ownersList.Add(owner);
+            data.Add("owners", ownersList);
+            
+            data.Add("initialized", initialized);
+            
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    
+                    var spawnOrderList = dict["spawnOrder"].DataList;
+                    for (int i = 0; i < spawnOrder.Length; i++)
+                        spawnOrder[i] = (int)spawnOrderList[i].Double;
+                    
+                    curSpawned = (int)dict["curSpawned"].Double;
+                    
+                    var ownersList = dict["owners"].DataList;
+                    for (int i = 0; i < owners.Length; i++)
+                        owners[i] = (int)ownersList[i].Double;
+                    
+                    initialized = dict["initialized"].Boolean;
+                    
+                    // Call existing Deserialize to update object activation
+                    Deserialize();
+                }
+            }
+        }
     }
 }

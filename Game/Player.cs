@@ -316,6 +316,7 @@ namespace ThisIsBennyK.TexasHoldEm
         private void SerializeSync()
         {
             SerializeOwnerSync(1);
+            Manager.SendToOwnerWithParam(nameof(DeserializeFromJson), SerializeToJson());
             Manager.SendToOwnerWithParam(nameof(Manager.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
         }
 
@@ -1226,6 +1227,86 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 default:
                     return $"All progress will be lost. {(midgameJoinOn ? "You can rejoin midgame." : "You will not be able to rejoin midgame.")}";
+            }
+        }
+
+        public string SerializeToJson()
+        {
+            var data = new VRC.SDK3.Data.DataDictionary();
+            data.Add("curStatus", curStatus);
+            data.Add("curRound", curRound);
+            data.Add("lateJoiner", lateJoiner);
+            data.Add("winByDefault", winByDefault);
+            data.Add("mainPotWon", mainPotWon);
+            data.Add("numPotsWon", numPotsWon);
+            
+            var betsList = new VRC.SDK3.Data.DataList();
+            foreach (int bet in bets)
+                betsList.Add(bet);
+            data.Add("bets", betsList);
+            
+            var sidePotsWonList = new VRC.SDK3.Data.DataList();
+            foreach (int pot in sidePotsWon)
+                sidePotsWonList.Add(pot);
+            data.Add("sidePotsWon", sidePotsWonList);
+            
+            // Include Hand data
+            var handData = new VRC.SDK3.Data.DataDictionary();
+            handData.Add("cardIdx1", Hand.FirstCard);
+            handData.Add("cardIdx2", Hand.SecondCard);
+            data.Add("hand", handData);
+            
+            // Include ModerationPanel data
+            var moderationData = new VRC.SDK3.Data.DataDictionary();
+            var votesList = new VRC.SDK3.Data.DataList();
+            foreach (bool vote in ModerationPanel.votes)
+                votesList.Add(vote);
+            moderationData.Add("votes", votesList);
+            data.Add("moderationPanel", moderationData);
+            
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    
+                    curStatus = (byte)dict["curStatus"].Double;
+                    curRound = (int)dict["curRound"].Double;
+                    lateJoiner = dict["lateJoiner"].Boolean;
+                    winByDefault = dict["winByDefault"].Boolean;
+                    mainPotWon = dict["mainPotWon"].Boolean;
+                    numPotsWon = (int)dict["numPotsWon"].Double;
+                    
+                    var betsList = dict["bets"].DataList;
+                    for (int i = 0; i < bets.Length; i++)
+                        bets[i] = (int)betsList[i].Double;
+                    
+                    var sidePotsWonList = dict["sidePotsWon"].DataList;
+                    for (int i = 0; i < sidePotsWon.Length; i++)
+                        sidePotsWon[i] = (int)sidePotsWonList[i].Double;
+                    
+                    // Extract and deserialize Hand data
+                    if (dict.ContainsKey("hand"))
+                    {
+                        var handDict = dict["hand"].DataDictionary;
+                        var handJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(handDict));
+                        Hand.DeserializeFromJson(handJson);
+                    }
+                    
+                    // Extract and deserialize ModerationPanel data
+                    if (dict.ContainsKey("moderationPanel"))
+                    {
+                        var moderationDict = dict["moderationPanel"].DataDictionary;
+                        var moderationJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(moderationDict));
+                        ModerationPanel.DeserializeFromJson(moderationJson);
+                    }
+                }
             }
         }
     }
