@@ -960,11 +960,12 @@ namespace ThisIsBennyK.TexasHoldEm
             Serialize();
         }
 
-        public void UpdateJoinedPlayersPostSerial()
-        {
-            // FIX: Now deserialization happens after state is synchronized to all clients
-            SendToAll(nameof(Deserialize));
-        }
+         public void UpdateJoinedPlayersPostSerial()
+         {
+             // FIX: Now deserialization happens after state is synchronized to all clients
+             SendToAll(nameof(Deserialize));
+         }
+
 
         public void StartGame()
         {
@@ -1784,7 +1785,11 @@ namespace ThisIsBennyK.TexasHoldEm
         {
             foreach (Player player in Players)
             {
-                player.RequestAckForOwnerSync(nameof(AcknowledgeOwnerSync));
+                if (player.HasOwner)
+                {
+                    player.SendToOwnerWithParam(nameof(player.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
+                    Debug.Log($"{gameObject.name}: Requested ack for player {player.PlayerNum}!");
+                }
             }
         }
 

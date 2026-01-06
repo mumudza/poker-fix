@@ -316,7 +316,7 @@ namespace ThisIsBennyK.TexasHoldEm
         private void SerializeSync()
         {
             SerializeOwnerSync(1);
-            Manager.RequestAckForOwnerSync(nameof(AcknowledgeOwnerSync));
+            Manager.SendToOwnerWithParam(nameof(Manager.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
         }
 
         public override void Deserialize()

@@ -41,7 +41,7 @@ namespace ThisIsBennyK.TexasHoldEm
         private int waitingForAckCount = 0;
         public bool waitingForAck = false;
         private float ackTimeoutTimer = 0f;
-        private const float ackTimeoutSeconds = 1.0f;
+        private const float ackTimeoutSeconds = 10.0f;
 
         public virtual void Start()
         {
@@ -267,10 +267,9 @@ namespace ThisIsBennyK.TexasHoldEm
         [NetworkCallable]
         public void RequestAckForOwnerSync(string ackFunction)
         {
-            if (HasOwner)
-            {
-                SendCustomNetworkEvent(NetworkEventTarget.Owner, ackFunction);
-            }
+            Debug.Log($"{gameObject.name}: Received RequestAckForOwnerSync, for function {ackFunction}!");
+            Serialize();
+            SendCustomNetworkEvent(NetworkEventTarget.Owner, ackFunction);
         }
 
         /// <summary>
@@ -280,12 +279,17 @@ namespace ThisIsBennyK.TexasHoldEm
         public void AcknowledgeOwnerSync()
         {
             if (!waitingForAck)
+            {
+                Debug.Log($"{gameObject.name}: Received acknowledgement, but is not waiting!");
                 return;
+            }
 
             waitingForAckCount--;
+            Debug.Log($"{gameObject.name}: Received acknowledgement. Waiting for {waitingForAckCount}");
 
             if (waitingForAckCount <= 0)
             {
+                Serialize();
                 waitingForAck = false;
                 waitingForAckCount = 0;
                 Debug.Log($"{gameObject.name}: All acknowledgements received");
