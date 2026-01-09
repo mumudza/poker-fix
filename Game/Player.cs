@@ -316,8 +316,10 @@ namespace ThisIsBennyK.TexasHoldEm
         private void SerializeSync()
         {
             SerializeOwnerSync(1);
-            Manager.SendToOwnerWithParam(nameof(DeserializeFromJson), SerializeToJson());
+            Debug.Log($"{gameObject.name}: Requesting ack for GameManager!");
+            Manager.SendToOwnerWithParam(nameof(Manager.DeserializePlayerFromJson), SerializeToJson());
             Manager.SendToOwnerWithParam(nameof(Manager.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
+            Debug.Log($"{gameObject.name}: Requested ack for GameManager!");
         }
 
         public override void Deserialize()
@@ -1232,6 +1234,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public string SerializeToJson()
         {
+            Debug.Log($"serializing to json");
             var data = new VRC.SDK3.Data.DataDictionary();
             data.Add("curStatus", curStatus);
             data.Add("curRound", curRound);
@@ -1239,6 +1242,8 @@ namespace ThisIsBennyK.TexasHoldEm
             data.Add("winByDefault", winByDefault);
             data.Add("mainPotWon", mainPotWon);
             data.Add("numPotsWon", numPotsWon);
+
+            data.Add("PlayerNum", PlayerNum);
             
             var betsList = new VRC.SDK3.Data.DataList();
             foreach (int bet in bets)
@@ -1265,6 +1270,13 @@ namespace ThisIsBennyK.TexasHoldEm
             data.Add("moderationPanel", moderationData);
             
             return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeManagerFromJson(string json)
+        {
+            Debug.Log($"Player received json to deserialize manager: {json}");
+            Manager.DeserializeFromJson(json);
         }
 
         [NetworkCallable]

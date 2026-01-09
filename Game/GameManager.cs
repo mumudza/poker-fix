@@ -1787,7 +1787,8 @@ namespace ThisIsBennyK.TexasHoldEm
             {
                 if (player.HasOwner)
                 {
-                    player.SendToOwnerWithParam(nameof(DeserializeFromJson), SerializeToJson());
+                    Debug.Log($"{gameObject.name}: Requesting ack for player {player.PlayerNum}!");
+                    player.SendToOwnerWithParam(nameof(player.DeserializeManagerFromJson), SerializeToJson());
                     player.SendToOwnerWithParam(nameof(player.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
                     Debug.Log($"{gameObject.name}: Requested ack for player {player.PlayerNum}!");
                 }
@@ -2449,6 +2450,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 deckOwnersList.Add(owner);
             deckData.Add("owners", deckOwnersList);
             
+            deckData.Add("curSpawned", GameDeck.pool.curSpawned);
             deckData.Add("initialized", GameDeck.pool.initialized);
             data.Add("deck", deckData);
             
@@ -2513,8 +2515,28 @@ namespace ThisIsBennyK.TexasHoldEm
         }
 
         [NetworkCallable]
+        public void DeserializePlayerFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    int playerNum = (int)dict["PlayerNum"].Double;
+                    foreach (Player player in Players)
+                    {
+                        if (player.PlayerNum == playerNum)
+                            player.DeserializeFromJson(json);
+                    }
+                }
+            }            
+        }
+
+
+        [NetworkCallable]
         public void DeserializeFromJson(string json)
         {
+            Debug.Log($"Attempting to deserialize gamemanager: {json}");
             if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
             {
                 if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)

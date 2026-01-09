@@ -277,7 +277,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         /// <summary>
         /// Updates the acknowledgement flag and handles timeout.
-        /// Call this from your derived class's Update() method.
+        /// Call this from your derived  class's Update() method.
         /// </summary>
         public void UpdateAckFlag()
         {
