@@ -21,6 +21,7 @@ namespace ThisIsBennyK.TexasHoldEm
     [UdonBehaviourSyncMode(BehaviourSyncMode.Continuous)]
     public class Hand : Benscript
     {
+        public override bool SupportsAutoClaim => true;
         public const int Size = 2, FinalSize = 5;
 
         public const float MinimumPutdownDistance = 0.05f;

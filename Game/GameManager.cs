@@ -689,8 +689,10 @@ namespace ThisIsBennyK.TexasHoldEm
             }
         }
 
-        public void OnEnable()
+        public override void OnEnable()
         {
+            base.OnEnable();
+
             foreach (var cardObj in GameDeck.pool.Objects)
                 cardObj.GetComponent<Card>()._SetCardFront();
 
@@ -784,11 +786,11 @@ namespace ThisIsBennyK.TexasHoldEm
             CommCardInfoDisplay.Deserialize();
         }
 
-        //public override void OnPlayerJoined(VRCPlayerApi player)
-        //{
-        //    if (LocalPlayer == player)
-        //        Deserialize();
-        //}
+        public override void OnPlayerJoined(VRCPlayerApi player)
+        {
+            if (LocalPlayer == player)
+                Deserialize();
+        }
 
         public override void OnPlayerLeft(VRCPlayerApi player)
         {
