@@ -74,8 +74,6 @@ namespace ThisIsBennyK.TexasHoldEm
             SendToOwner(nameof(OwnByLocal));
         }
 
-        public virtual bool SupportsAutoClaim => false;
-
         public override void OnOwnershipTransferred(VRCPlayerApi player)
         {
             if (ForceTransferOnDisconnect && Networking.IsOwner(gameObject) && player == Owner && OwnerID != InvalidPlayerID && OwnerID != Owner.playerId)
@@ -83,20 +81,6 @@ namespace ThisIsBennyK.TexasHoldEm
                 Debug.Log($"{gameObject.name} force transferred");
                 OwnByLocal();
                 OnOwnershipForceTransferred();
-            }
-            else if (SupportsAutoClaim && Networking.IsOwner(gameObject) && !OwnedByLocal) {
-                // If I am the owner, but the script doesn't know it yet, take ownership locally.
-                // This handles cases where the "OwnByLocal" network event was dropped (e.g. object was inactive)
-                OwnByLocal();
-            }
-        }
-
-        public virtual void OnEnable()
-        {
-            if (Networking.IsOwner(gameObject) && !OwnedByLocal) 
-            {
-                // Self-heal ownership if we wake up and find we are the owner but state doesn't match
-                OwnByLocal();
             }
         }
 
@@ -236,14 +220,50 @@ namespace ThisIsBennyK.TexasHoldEm
             SendToOwnerWithParam(method, value);
         }
 
+        // ============================================
+        // JSON State System
+        // ============================================
 
+        /// <summary>
+        /// Network event to request current JSON state from owner.
+        /// Non-owners call this to get latest state.
+        /// </summary>
+        /// 
+        
+        /*
+        [NetworkCallable]
+        public void RequestJsonState()
+        {
+            if (OwnedByLocal)
+            {
+                SendToAllWithParam(nameof(ReceiveJsonState), SerializeToJson());
+            }
+        }
+        */
+
+        /// <summary>
+        /// Network event to receive JSON state from owner.
+        /// Called when owner broadcasts their state.
+        /// </summary>
+        /// 
+        /*
+        [NetworkCallable]
+        public void ReceiveJsonState(string json)
+        {
+            DeserializeFromJson(json);
+        }
+        */
 
         // ============================================
         // Acknowledgement System
         // ============================================
 
+        /// <summary>
         /// Serializes data and waits for acknowledgements from players.
         /// Call this when you need to ensure players have received the serialized data.
+        /// </summary>
+        /// <param name="expectedAcks">Number of acknowledgements expected from players who own seats/objects</param>
+        /// <returns>True if waiting for acknowledgements, false otherwise</returns>
         public bool SerializeOwnerSync(int expectedAcks)
         {
             waitingForAck = true;
@@ -255,8 +275,10 @@ namespace ThisIsBennyK.TexasHoldEm
             return waitingForAck;
         }
 
+        /// <summary>
         /// Updates the acknowledgement flag and handles timeout.
-        /// Call this from your derived class's Update() method.
+        /// Call this from your derived  class's Update() method.
+        /// </summary>
         public void UpdateAckFlag()
         {
             if (!waitingForAck)
@@ -272,8 +294,10 @@ namespace ThisIsBennyK.TexasHoldEm
             }
         }
 
+        /// <summary>
         /// Network event sent to specific players requesting acknowledgement.
         /// Players should only acknowledge if they own a seat or player object.
+        /// </summary>
         [NetworkCallable]
         public void RequestAckForOwnerSync(string ackFunction)
         {
@@ -281,7 +305,9 @@ namespace ThisIsBennyK.TexasHoldEm
             SendCustomNetworkEvent(NetworkEventTarget.Owner, ackFunction);
         }
 
+        /// <summary>
         /// Network event sent back to owner when a player acknowledges.
+        /// </summary>
         [NetworkCallable]
         public void AcknowledgeOwnerSync()
         {

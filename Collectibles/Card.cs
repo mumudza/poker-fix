@@ -15,7 +15,6 @@ namespace ThisIsBennyK.TexasHoldEm
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class Card : Benscript
     {
-        public override bool SupportsAutoClaim => true;
         public const int Flop1 = 0, Flop2 = 1, Flop3 = 2, Turn = 3, River = 4;
 
         public const int Spades = 0, Hearts = 1, Clubs = 2, Diamonds = 3, Suits = 4;

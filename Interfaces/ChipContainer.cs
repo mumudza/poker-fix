@@ -11,8 +11,6 @@ namespace ThisIsBennyK.TexasHoldEm
 {
     public class ChipContainer : Benscript
     {
-        public override bool SupportsAutoClaim => true;
-        
         [Header("Chip Container Parts (Must be relatives)")]
 
         public ChipDisplay PileVisual;
