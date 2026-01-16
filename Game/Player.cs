@@ -1268,6 +1268,21 @@ namespace ThisIsBennyK.TexasHoldEm
                 votesList.Add(vote);
             moderationData.Add("votes", votesList);
             data.Add("moderationPanel", moderationData);
+
+            // ChipContainer.cs data
+            var bankrollData = new VRC.SDK3.Data.DataDictionary();
+            bankrollData.Add("chips", Bankroll.chips);
+            data.Add("Bankroll", bankrollData);
+            var addtBetData = new VRC.SDK3.Data.DataDictionary();
+            addtBetData.Add("chips", AddtBet.chips);
+            data.Add("AddtBet", addtBetData);
+            var fidgetBetData = new VRC.SDK3.Data.DataDictionary();
+            fidgetBetData.Add("chips", FidgetBet.chips);
+            data.Add("FidgetBet", fidgetBetData);
+            var betPileData = new VRC.SDK3.Data.DataDictionary();
+            betPileData.Add("chips", BetPile.chips);
+            data.Add("BetPile", betPileData);
+
             
             return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
         }
@@ -1318,8 +1333,27 @@ namespace ThisIsBennyK.TexasHoldEm
                         var moderationJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(moderationDict));
                         ModerationPanel.DeserializeFromJson(moderationJson);
                     }
+
+                    // ChipContainer.cs data
+                    if (dict.ContainsKey("Bankroll"))
+                    {
+                        Bankroll.chips = (int)dict["Bankroll"].DataDictionary["chips"].Double;
+                    }
+                    if (dict.ContainsKey("AddtBet"))
+                    {
+                        AddtBet.chips = (int)dict["AddtBet"].DataDictionary["chips"].Double;
+                    }
+                    if (dict.ContainsKey("FidgetBet"))
+                    {
+                        FidgetBet.chips = (int)dict["FidgetBet"].DataDictionary["chips"].Double;
+                    }
+                    if (dict.ContainsKey("BetPile"))
+                    {
+                        BetPile.chips = (int)dict["BetPile"].DataDictionary["chips"].Double;
+                    }
                 }
             }
+            Deserialize();
         }
     }
 }

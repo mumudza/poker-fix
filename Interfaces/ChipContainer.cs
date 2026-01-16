@@ -26,7 +26,7 @@ namespace ThisIsBennyK.TexasHoldEm
         public bool VisibleToOwnerOnly = false;
 
         [UdonSynced]
-        private int chips = 0;
+        public int chips = 0;
 
         public string DisplayString => GetPrefix() + Settings.FormatCurrency(GetChips());
 

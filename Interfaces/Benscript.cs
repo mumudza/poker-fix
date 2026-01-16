@@ -41,7 +41,7 @@ namespace ThisIsBennyK.TexasHoldEm
         private int waitingForAckCount = 0;
         public bool waitingForAck = false;
         private float ackTimeoutTimer = 0f;
-        private const float ackTimeoutSeconds = 10.0f;
+        private const float ackTimeoutSeconds = 5.0f;
 
         public virtual void Start()
         {

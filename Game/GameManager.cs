@@ -2614,7 +2614,8 @@ namespace ThisIsBennyK.TexasHoldEm
                         GameDeck.DeserializeFromJson(deckJson);
                     }
                 }
-            }            
+            }   
+            Deserialize();         
         }
     }
 }
