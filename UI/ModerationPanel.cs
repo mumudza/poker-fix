@@ -7,6 +7,12 @@
 using UdonSharp;
 using UnityEngine;
 using UnityEngine.UI;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
+using VRC.Udon;
+using VRC.Udon.Common;
+using VRC.Udon.Common.Interfaces;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -35,7 +41,7 @@ namespace ThisIsBennyK.TexasHoldEm
         public TMPro.TextMeshProUGUI VotesNeededText;
 
         [UdonSynced]
-        private bool[] votes;
+        public bool[] votes;
 
         public override void Start()
         {
@@ -100,13 +106,38 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void ClearVotesForNewJoiners()
         {
-            // [...] the moment we need them to be, which is now, when a new player joins and their vote needs to be cleared.
+            // [...]`} moment we need them to be, which is now, when a new player joins and their vote needs to be cleared.
             // I call this "the chain reaction." This contrived bullshit is due to the fact that
             // networked synchronization of data is inherently slow, and if we saved this data in other ways,
             // the moderation panel would not update precisely when a player joins.
             // Is this good code? Hell no, absolutely not. But it works, and that's what matters.
 
             Serialize();
+        }
+
+        public string SerializeToJson()
+        {
+            var data = new VRC.SDK3.Data.DataDictionary();
+            var votesList = new VRC.SDK3.Data.DataList();
+            foreach (bool vote in votes)
+                votesList.Add(vote);
+            data.Add("votes", votesList);
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    var votesList = dict["votes"].DataList;
+                    for (int i = 0; i < votes.Length; i++)
+                        votes[i] = votesList[i].Boolean;
+                }
+            }
         }
     }
 }

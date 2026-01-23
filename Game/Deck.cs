@@ -7,6 +7,12 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
+using VRC.Udon;
+using VRC.Udon.Common;
+using VRC.Udon.Common.Interfaces;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -235,6 +241,17 @@ namespace ThisIsBennyK.TexasHoldEm
             CommCardInfoDisplay.ChangeDesign(design);
 
             DeckModel.material = CardBackMaterials[design];
+        }
+
+        public string SerializeToJson()
+        {
+            return pool.SerializeToJson();
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            pool.DeserializeFromJson(json);
         }
     }
 }

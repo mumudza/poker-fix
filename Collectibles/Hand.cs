@@ -7,6 +7,12 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDK3.Components;
+using VRC.SDK3.Data;
+using VRC.SDK3.StringLoading;
+using VRC.SDK3.UdonNetworkCalling;  
+using VRC.Udon;
+using VRC.Udon.Common;
+using VRC.Udon.Common.Interfaces;
 
 namespace ThisIsBennyK.TexasHoldEm
 {
@@ -44,9 +50,9 @@ namespace ThisIsBennyK.TexasHoldEm
         public SFXPlayer PickupSFX, PutdownSFX;
 
         [UdonSynced]
-        private int cardIdx1 = -1;
+        public int cardIdx1 = -1;
         [UdonSynced]
-        private int cardIdx2 = -1;
+        public int cardIdx2 = -1;
 
         private Card card1Comp = null, card2Comp = null;
 
@@ -116,6 +122,7 @@ namespace ThisIsBennyK.TexasHoldEm
                     cardIdx1 = cardIdxs[0];
                     cardIdx2 = cardIdxs[1];
                 }
+                Debug.Log($"ReceiveCards: Successfully received both cards: card1Idx={cardIdx1}, card2Idx={cardIdx2}");
 
                 if (cardIdx1 != -1)
                 {
@@ -144,6 +151,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
         public void ResetCards()
         {
+            Debug.Log($"ResetCards BEGIN");
             cardIdx1 = -1;
             cardIdx2 = -1;
 
@@ -244,6 +252,28 @@ namespace ThisIsBennyK.TexasHoldEm
                 }
 
                 Pickup.pickupable = false;
+            }
+        }
+
+        public string SerializeToJson()
+        {
+            var data = new VRC.SDK3.Data.DataDictionary();
+            data.Add("cardIdx1", cardIdx1);
+            data.Add("cardIdx2", cardIdx2);
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    cardIdx1 = (int)dict["cardIdx1"].Double;
+                    cardIdx2 = (int)dict["cardIdx2"].Double;
+                }
             }
         }
     }

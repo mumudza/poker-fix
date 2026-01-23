@@ -304,6 +304,24 @@ namespace ThisIsBennyK.TexasHoldEm
             base.Start();
         }
 
+        private void Update()
+        {
+            if (waitingForAck)
+            {
+                UpdateAckFlag();
+                return;
+            }
+        }
+
+        private void SerializeSync()
+        {
+            SerializeOwnerSync(1);
+            Debug.Log($"{gameObject.name}: Requesting ack for GameManager!");
+            Manager.SendToOwnerWithParam(nameof(Manager.DeserializePlayerFromJson), SerializeToJson());
+            Manager.SendToOwnerWithParam(nameof(Manager.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
+            Debug.Log($"{gameObject.name}: Requested ack for GameManager!");
+        }
+
         public override void Deserialize()
         {
             if (OwnedByLocal)
@@ -477,7 +495,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 PerformEndOfRoundTasks();
             }
 
-            Serialize();
+            SerializeSync();
 
             // REMARK: LocalSettingsPanel doesn't inherit from Benscript so this has to be done manually
             LocalSettingsPanel.SFX.Volume = LocalSettingsPanel.Settings.SFXVolume;
@@ -516,8 +534,8 @@ namespace ThisIsBennyK.TexasHoldEm
             Manager.SendToOwner(nameof(GameManager.UpdateJoinedPlayers));
 
             Debug.Log($"************* Called before P{PlayerNum} left *************");
-            AddPostSerialListener(nameof(OnLeftTable));
-            Serialize();
+            SerializeSync();
+            SendToOwner(nameof(OnLeftTable));
 
             foreach (OutsiderLocalSettings panel in Manager.OutsiderLocalSettingsPanels)
                 panel._EnableOutsiderSettings();
@@ -525,7 +543,7 @@ namespace ThisIsBennyK.TexasHoldEm
             // In case it was left on due to leaving right before the Showdown turn ended
             TickTockSFX.Stop();
 
-            AddPostSerialListener(nameof(InformOtherManagersOfChange));
+            SendToOwner(nameof(InformOtherManagersOfChange));
         }
 
         public void OnLeftTable()
@@ -665,7 +683,7 @@ namespace ThisIsBennyK.TexasHoldEm
             mainPotWon = false;
             numPotsWon = 0;
             
-            Serialize();
+            SerializeSync();
         }
 
         public void PerformStartOfRoundTasks()
@@ -674,7 +692,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             ++curRound;
             revealChosen = true;
-            Serialize();
+            SerializeSync();
         }
 
         public void PerformSmallBlindTasks()
@@ -690,7 +708,8 @@ namespace ThisIsBennyK.TexasHoldEm
             ForceBigBlind();
         }
 
-        public void PerformStartOfTurnTasks()
+        [NetworkCallable]
+        public void PerformStartOfTurnTasks(string json)
         {
             Debug.Log($"$$$$$$$$$$$$$$$$$$$$ P{PlayerNum} RARIN TO GO (Should be P{Manager.CurPlayerIndex}) $$$$$$$$$$$$$$$$$$$$$$$");
 
@@ -700,23 +719,47 @@ namespace ThisIsBennyK.TexasHoldEm
             Manager.SendToAll(nameof(Deserialize));
             Manager._DeserializeLocally();
 
-            if (Manager.CurStreet == GameManager.ShowdownStreet)
+            if (VRCJson.TryDeserializeFromJson(json, out DataToken result))
             {
-                ShowdownTimer.TimeInSeconds = ForcedReveal ? ForcedRevealTime : RevealChoiceTime;
-
-                if (!TickTockSFX.gameObject.GetComponent<AudioSource>().isPlaying)
+                // Deserialization succeeded! Let's figure out what we've got.
+                if (result.TokenType == TokenType.DataDictionary)
                 {
-                    ShowdownTimer.StartTimer();
-                    TickTockSFX.Play();
-                    Manager.TurnJingle.Play();
+                    Debug.Log($"Successfully deserialized as a dictionary with {result.DataDictionary.Count} items.");
+                    // Use the passed status instead of accessing local field
+                    double currStreetDouble = result.DataDictionary["CurStreet"].Double;
+                    int curStreet = (int)currStreetDouble;
+                    bool ownerAtTable = result.DataDictionary["OwnerAtTable"].Boolean;
+                    bool turnJingleIsPlaying = result.DataDictionary["TurnJingleIsPlaying"].Boolean;
+
+                    if (curStreet == GameManager.ShowdownStreet)
+                    {
+                        ShowdownTimer.TimeInSeconds = ForcedReveal ? ForcedRevealTime : RevealChoiceTime;
+
+                        if (!TickTockSFX.gameObject.GetComponent<AudioSource>().isPlaying)
+                        {
+                            ShowdownTimer.StartTimer();
+                            TickTockSFX.Play();
+                            Manager.TurnJingle.Play();
+                        }
+                    }
+
+                    if (!ownerAtTable)
+                        Manager.SendToOwner(nameof(Disown));
+
+                    if (curStreet != GameManager.ShowdownStreet && !turnJingleIsPlaying)
+                        Manager.TurnJingle.Play();
+
+
                 }
+                else 
+                {
+                    Debug.LogError($"Unexpected result when deserializing json {json}");
+                }
+            } else {
+                // Deserialization failed. Let's see what the error was.
+                Debug.LogError($"Failed to Deserialize json {json} - {result.ToString()}");
             }
 
-            if (!Manager.OwnerAtTable)
-                Manager.SendToOwner(nameof(Disown));
-
-            if (Manager.CurStreet != GameManager.ShowdownStreet && !Manager.TurnJingle.gameObject.GetComponent<AudioSource>().isPlaying)
-                Manager.TurnJingle.Play();
         }
 
         private void RefreshCards()
@@ -767,7 +810,7 @@ namespace ThisIsBennyK.TexasHoldEm
             curStatus = statusToSend;
             var actionData = new DataDictionary();
             actionData.Add("status", statusToSend);
-            Serialize();
+            SerializeSync();
             SendToOwnerWithParam(nameof(AdvanceGameWithStatus), actionData);
         }
 
@@ -812,7 +855,7 @@ namespace ThisIsBennyK.TexasHoldEm
             betData.Add("status", statusToSend);
             betData.Add("betAmount", bets[currentStreet]);
             betData.Add("street", currentStreet);
-            Serialize();
+            SerializeSync();
             SendToOwnerWithParam(nameof(AdvanceGameWithBetData), betData);
         }
 
@@ -839,7 +882,7 @@ namespace ThisIsBennyK.TexasHoldEm
             var checkData = new DataDictionary();
             checkData.Add("status", statusToSend);
             checkData.Add("street", currentStreet);
-            Serialize();
+            SerializeSync();
             SendToOwnerWithParam(nameof(AdvanceGameWithCheckData), checkData);
         }
 
@@ -940,7 +983,7 @@ namespace ThisIsBennyK.TexasHoldEm
         {
             curStatus = GameManager.NoStatus;
             Manager.AddToConsole($"Changed curStatus to {curStatus} for player {PlayerNum}");
-            Serialize();
+            SerializeSync();
         }
 
         private void ForceSmallBlind()
@@ -953,7 +996,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             bets[GameManager.PreflopStreet] = amount;
 
-            Serialize();
+            SerializeSync();
         }
 
         private void ForceBigBlind()
@@ -966,7 +1009,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             bets[GameManager.PreflopStreet] = amount;
 
-            Serialize();
+            SerializeSync();
         }
 
         public void TakeRoundResults()
@@ -986,7 +1029,7 @@ namespace ThisIsBennyK.TexasHoldEm
                 Bankroll.AddChips(Manager.SumOfAllBets);
                 winByDefault = true;
                 WinnerFX.PlayForAll();
-                Serialize();
+                SerializeSync();
 
                 return;
             }
@@ -1084,13 +1127,13 @@ namespace ThisIsBennyK.TexasHoldEm
             if (numPotsWon > 0)
                 WinnerFX.PlayForAll();
 
-            Serialize();
+            SerializeSync();
         }
 
         public void JoinFullyFromLateness()
         {
             lateJoiner = false;
-            Serialize();
+            SerializeSync();
         }
 
         private string BuildWinString()
@@ -1187,6 +1230,130 @@ namespace ThisIsBennyK.TexasHoldEm
                 default:
                     return $"All progress will be lost. {(midgameJoinOn ? "You can rejoin midgame." : "You will not be able to rejoin midgame.")}";
             }
+        }
+
+        public string SerializeToJson()
+        {
+            Debug.Log($"serializing to json");
+            var data = new VRC.SDK3.Data.DataDictionary();
+            data.Add("curStatus", curStatus);
+            data.Add("curRound", curRound);
+            data.Add("lateJoiner", lateJoiner);
+            data.Add("winByDefault", winByDefault);
+            data.Add("mainPotWon", mainPotWon);
+            data.Add("numPotsWon", numPotsWon);
+
+            data.Add("PlayerNum", PlayerNum);
+            
+            var betsList = new VRC.SDK3.Data.DataList();
+            foreach (int bet in bets)
+                betsList.Add(bet);
+            data.Add("bets", betsList);
+            
+            var sidePotsWonList = new VRC.SDK3.Data.DataList();
+            foreach (int pot in sidePotsWon)
+                sidePotsWonList.Add(pot);
+            data.Add("sidePotsWon", sidePotsWonList);
+            
+            // Include Hand data
+            var handData = new VRC.SDK3.Data.DataDictionary();
+            handData.Add("cardIdx1", Hand.FirstCard);
+            handData.Add("cardIdx2", Hand.SecondCard);
+            data.Add("hand", handData);
+            
+            // Include ModerationPanel data
+            var moderationData = new VRC.SDK3.Data.DataDictionary();
+            var votesList = new VRC.SDK3.Data.DataList();
+            foreach (bool vote in ModerationPanel.votes)
+                votesList.Add(vote);
+            moderationData.Add("votes", votesList);
+            data.Add("moderationPanel", moderationData);
+
+            // ChipContainer.cs data
+            var bankrollData = new VRC.SDK3.Data.DataDictionary();
+            bankrollData.Add("chips", Bankroll.chips);
+            data.Add("Bankroll", bankrollData);
+            var addtBetData = new VRC.SDK3.Data.DataDictionary();
+            addtBetData.Add("chips", AddtBet.chips);
+            data.Add("AddtBet", addtBetData);
+            var fidgetBetData = new VRC.SDK3.Data.DataDictionary();
+            fidgetBetData.Add("chips", FidgetBet.chips);
+            data.Add("FidgetBet", fidgetBetData);
+            var betPileData = new VRC.SDK3.Data.DataDictionary();
+            betPileData.Add("chips", BetPile.chips);
+            data.Add("BetPile", betPileData);
+
+            
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializeManagerFromJson(string json)
+        {
+            Debug.Log($"Player received json to deserialize manager: {json}");
+            Manager.DeserializeFromJson(json);
+        }
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    
+                    curStatus = (byte)dict["curStatus"].Double;
+                    curRound = (int)dict["curRound"].Double;
+                    lateJoiner = dict["lateJoiner"].Boolean;
+                    winByDefault = dict["winByDefault"].Boolean;
+                    mainPotWon = dict["mainPotWon"].Boolean;
+                    numPotsWon = (int)dict["numPotsWon"].Double;
+                    
+                    var betsList = dict["bets"].DataList;
+                    for (int i = 0; i < bets.Length; i++)
+                        bets[i] = (int)betsList[i].Double;
+                    
+                    var sidePotsWonList = dict["sidePotsWon"].DataList;
+                    for (int i = 0; i < sidePotsWon.Length; i++)
+                        sidePotsWon[i] = (int)sidePotsWonList[i].Double;
+                    
+                    // Extract and deserialize Hand data
+                    if (dict.ContainsKey("hand"))
+                    {
+                        var handDict = dict["hand"].DataDictionary;
+                        var handJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(handDict));
+                        Hand.DeserializeFromJson(handJson);
+                    }
+                    
+                    // Extract and deserialize ModerationPanel data
+                    if (dict.ContainsKey("moderationPanel"))
+                    {
+                        var moderationDict = dict["moderationPanel"].DataDictionary;
+                        var moderationJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(moderationDict));
+                        ModerationPanel.DeserializeFromJson(moderationJson);
+                    }
+
+                    // ChipContainer.cs data
+                    if (dict.ContainsKey("Bankroll"))
+                    {
+                        Bankroll.chips = (int)dict["Bankroll"].DataDictionary["chips"].Double;
+                    }
+                    if (dict.ContainsKey("AddtBet"))
+                    {
+                        AddtBet.chips = (int)dict["AddtBet"].DataDictionary["chips"].Double;
+                    }
+                    if (dict.ContainsKey("FidgetBet"))
+                    {
+                        FidgetBet.chips = (int)dict["FidgetBet"].DataDictionary["chips"].Double;
+                    }
+                    if (dict.ContainsKey("BetPile"))
+                    {
+                        BetPile.chips = (int)dict["BetPile"].DataDictionary["chips"].Double;
+                    }
+                }
+            }
+            Deserialize();
         }
     }
 }

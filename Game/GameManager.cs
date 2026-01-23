@@ -657,6 +657,12 @@ namespace ThisIsBennyK.TexasHoldEm
 
         private void Update()
         {
+            if (waitingForAck)
+            {
+                UpdateAckFlag();
+                return;
+            }
+
             if (!OwnedByLocal)
                 return;
 
@@ -677,7 +683,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
                 if (roundEndTimer <= 0f)
                 {
-                    Serialize();
+                    SerializeSyncAllPlayers();
                     OnRoundEndedTimeout();
                 }
             }
@@ -934,7 +940,7 @@ namespace ThisIsBennyK.TexasHoldEm
             waitingForCardsReturned = false;
             roundEnded = false;
 
-            Serialize();
+            SerializeSyncAllPlayers();
 
             SendToAll(nameof(ResetRaisePitch));
             SendToAll(nameof(ResetAllInPitch));
@@ -954,11 +960,12 @@ namespace ThisIsBennyK.TexasHoldEm
             Serialize();
         }
 
-        public void UpdateJoinedPlayersPostSerial()
-        {
-            // FIX: Now deserialization happens after state is synchronized to all clients
-            SendToAll(nameof(Deserialize));
-        }
+         public void UpdateJoinedPlayersPostSerial()
+         {
+             // FIX: Now deserialization happens after state is synchronized to all clients
+             SendToAll(nameof(Deserialize));
+         }
+
 
         public void StartGame()
         {
@@ -981,8 +988,8 @@ namespace ThisIsBennyK.TexasHoldEm
             curPlayerIdx = curOwnerIdx;
             curDealerIdx = curOwnerIdx - 1 < 0 ? Players.Length - 1 : curOwnerIdx - 1;
 
-            AddPostSerialListener(nameof(PerformStartOfGameTasks));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(PerformStartOfGameTasks));
         }
 
         public void PerformStartOfGameTasks()
@@ -994,7 +1001,7 @@ namespace ThisIsBennyK.TexasHoldEm
             }
 
             waitingForNextGame = true;
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void WaitForNextGame()
@@ -1018,7 +1025,7 @@ namespace ThisIsBennyK.TexasHoldEm
             if (allReady)
             {
                 waitingForNextGame = false;
-                Serialize();
+                SerializeSyncAllPlayers();
 
                 GoToNextRound();
             }
@@ -1033,15 +1040,15 @@ namespace ThisIsBennyK.TexasHoldEm
             ClearPots();
             CommCardInfoDisplay.SendToAll(nameof(CommunityCardInfoDisplay.ResetOpacities));
 
-            AddPostSerialListener(nameof(DetermineRoundPlayers));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(DetermineRoundPlayers));
         }
 
         public void DetermineRoundPlayers()
         {
             waitingForPlayersDetermined = true;
-            AddPostSerialListener(nameof(ManageChangingPlayers));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(ManageChangingPlayers));
         }
 
         public void ManageChangingPlayers()
@@ -1063,17 +1070,15 @@ namespace ThisIsBennyK.TexasHoldEm
             if (NumLateJoiners == 0 && NumPlayers == NumPlayersAfterRound)
             {
                 waitingForPlayersDetermined = false;
-
-                AddPostSerialListener(nameof(ReturnAllCards));
-                Serialize();
+                SerializeSyncAllPlayers();
+                SendToOwner(nameof(ReturnAllCards));
             }
         }
 
         public void ReturnAllCards()
         {
             waitingForCardsReturned = true;
-            Serialize();
-            
+            SerializeSyncAllPlayers();            
             GameDeck.ReturnAll();
         }
 
@@ -1083,8 +1088,8 @@ namespace ThisIsBennyK.TexasHoldEm
             {
                 waitingForCardsReturned = false;
 
-                AddPostSerialListener(nameof(DealForRound));
-                Serialize();
+                SerializeSyncAllPlayers();
+                SendToOwner(nameof(DealForRound));
             }
         }
 
@@ -1102,8 +1107,8 @@ namespace ThisIsBennyK.TexasHoldEm
             CalculateAllBestHands();
             HardResetStatuses();
 
-            AddPostSerialListener(nameof(PerformStartOfRoundTasks));
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(PerformStartOfRoundTasks));
         }
 
         public void PerformStartOfRoundTasks()
@@ -1137,7 +1142,7 @@ namespace ThisIsBennyK.TexasHoldEm
 
             waitingForNextRound = true;
             ++curRound;
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void WaitForNextRound()
@@ -1178,7 +1183,7 @@ namespace ThisIsBennyK.TexasHoldEm
             if (allReady && numCurBlinds >= numExpectedBlinds)
             {
                 waitingForNextRound = false;
-                Serialize();
+                SerializeSyncAllPlayers();
 
                 GoToNextStreet();
             }
@@ -1758,11 +1763,43 @@ namespace ThisIsBennyK.TexasHoldEm
             return NoHand;
         }
 
+
+        private void SerializeSyncAllPlayers()
+        {
+            SerializeOwnerSync(GetOwnedPlayers());
+            RequestAckForAllPlayers();
+        }
+
+        private int GetOwnedPlayers()
+        {
+            int ownedPlayers = 0;
+            foreach (Player player in Players)
+            {
+                if (player.HasOwner)
+                    ownedPlayers++;
+            }
+            return ownedPlayers;
+        }
+
+        private void RequestAckForAllPlayers()
+        {
+            foreach (Player player in Players)
+            {
+                if (player.HasOwner)
+                {
+                    Debug.Log($"{gameObject.name}: Requesting ack for player {player.PlayerNum}!");
+                    player.SendToOwnerWithParam(nameof(player.DeserializeManagerFromJson), SerializeToJson());
+                    player.SendToOwnerWithParam(nameof(player.RequestAckForOwnerSync), nameof(AcknowledgeOwnerSync));
+                    Debug.Log($"{gameObject.name}: Requested ack for player {player.PlayerNum}!");
+                }
+            }
+        }
+
         public void OnPlayerChoseOption()
         {
             AddToConsole($"Setting player idx {curPlayerIdx} status in manager to {Players[curPlayerIdx].CurStatus}");
             SetCurStatus(curPlayerIdx, Players[curPlayerIdx].CurStatus);
-            Serialize();
+            SerializeSyncAllPlayers();
 
             AdvanceFromPlayer();
         }
@@ -1901,7 +1938,7 @@ namespace ThisIsBennyK.TexasHoldEm
             else if (curStreet == RiverStreet)
                 CommunityCardAnimators[Card.River].RequestAnimation("Turn");
 
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void GoToNextPlayer()
@@ -1927,9 +1964,8 @@ namespace ThisIsBennyK.TexasHoldEm
 
             AddToConsole($"Used to be {prevPlayerIdx}, now {curPlayerIdx}");
 
-            AddPostSerialListener(nameof(PerformStartOfTurnTasks));
-
-            Serialize();
+            SerializeSyncAllPlayers();
+            SendToOwner(nameof(PerformStartOfTurnTasks));
         }
 
         // REMARK: Doesn't take money into account
@@ -1977,7 +2013,13 @@ namespace ThisIsBennyK.TexasHoldEm
         public void PerformStartOfTurnTasks()
         {
             Debug.Log($"^^^^^^^^^^^^^^ CUR PLAYER IS P{curPlayerIdx} ^^^^^^^^^^^^^^");
-            Players[curPlayerIdx].SendToOwner(nameof(Player.PerformStartOfTurnTasks));
+
+            var startOfTurnData = new DataDictionary();
+            startOfTurnData.Add("OwnerAtTable", OwnerAtTable);
+            startOfTurnData.Add("CurStreet", curStreet);
+            startOfTurnData.Add("TurnJingleIsPlaying", TurnJingle.gameObject.GetComponent<AudioSource>().isPlaying);
+
+            Players[curPlayerIdx].SendToOwnerWithParam(nameof(Player.PerformStartOfTurnTasks), startOfTurnData);
         }
 
         public void GoToNextDealer()
@@ -1997,7 +2039,7 @@ namespace ThisIsBennyK.TexasHoldEm
                     break;
             }
 
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void CalculateSidePots()
@@ -2258,7 +2300,7 @@ namespace ThisIsBennyK.TexasHoldEm
             else
                 roundEndTimer = LongRoundEndTime;
 
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         private void OnRoundEndedTimeout()
@@ -2304,7 +2346,7 @@ namespace ThisIsBennyK.TexasHoldEm
         public void SetMidgameJoining(bool on)
         {
             midgameJoining = on;
-            Serialize();
+            SerializeSyncAllPlayers();
         }
 
         public int GetVotes(int index)
@@ -2373,5 +2415,205 @@ namespace ThisIsBennyK.TexasHoldEm
         }
 
         public bool _CheckedAtShowdown(int playerIdx) => CurStreet >= ShowdownStreet && GetCurStatus(playerIdx) == CheckedStatus;
+
+        public string SerializeToJson()
+        {
+            var data = new VRC.SDK3.Data.DataDictionary();
+            
+            data.Add("StartingBankrolls", StartingBankrolls);
+            data.Add("boolBitSet", boolBitSet);
+            data.Add("curPlayerIdx", curPlayerIdx);
+            data.Add("curDealerIdx", curDealerIdx);
+            data.Add("curRound", curRound);
+            data.Add("curStreet", curStreet);
+            data.Add("curStatuses", curStatuses);
+            data.Add("firstWinner", firstWinner);
+            data.Add("prevWinners", prevWinners);
+            data.Add("roundEndTimer", roundEndTimer);
+            
+            data.Add("flop1CardIdx", flop1CardIdx);
+            data.Add("flop2CardIdx", flop2CardIdx);
+            data.Add("flop3CardIdx", flop3CardIdx);
+            data.Add("turnCardIdx", turnCardIdx);
+            data.Add("riverCardIdx", riverCardIdx);
+            
+            // Include Deck data
+            var deckData = new VRC.SDK3.Data.DataDictionary();
+            
+            var spawnOrderList = new VRC.SDK3.Data.DataList();
+            foreach (int order in GameDeck.pool.spawnOrder)
+                spawnOrderList.Add(order);
+            deckData.Add("spawnOrder", spawnOrderList);
+            
+            var deckOwnersList = new VRC.SDK3.Data.DataList();
+            foreach (int owner in GameDeck.pool.owners)
+                deckOwnersList.Add(owner);
+            deckData.Add("owners", deckOwnersList);
+            
+            deckData.Add("curSpawned", GameDeck.pool.curSpawned);
+            deckData.Add("initialized", GameDeck.pool.initialized);
+            data.Add("deck", deckData);
+            
+            var bestFlopHandsList = new VRC.SDK3.Data.DataList();
+            var bestFlopScoresList = new VRC.SDK3.Data.DataList();
+            var bestFlopKickersList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < Players.Length; i++)
+            {
+                bestFlopHandsList.Add(bestFlopHands[i]);
+                bestFlopScoresList.Add(bestFlopScores[i]);
+                bestFlopKickersList.Add(bestFlopKickers[i]);
+            }
+            data.Add("bestFlopHands", bestFlopHandsList);
+            data.Add("bestFlopScores", bestFlopScoresList);
+            data.Add("bestFlopKickers", bestFlopKickersList);
+            
+            var bestTurnHandsList = new VRC.SDK3.Data.DataList();
+            var bestTurnScoresList = new VRC.SDK3.Data.DataList();
+            var bestTurnKickersList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < Players.Length; i++)
+            {
+                bestTurnHandsList.Add(bestTurnHands[i]);
+                bestTurnScoresList.Add(bestTurnScores[i]);
+                bestTurnKickersList.Add(bestTurnKickers[i]);
+            }
+            data.Add("bestTurnHands", bestTurnHandsList);
+            data.Add("bestTurnScores", bestTurnScoresList);
+            data.Add("bestTurnKickers", bestTurnKickersList);
+            
+            var bestRiverHandsList = new VRC.SDK3.Data.DataList();
+            var bestRiverScoresList = new VRC.SDK3.Data.DataList();
+            var bestRiverKickersList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < Players.Length; i++)
+            {
+                bestRiverHandsList.Add(bestRiverHands[i]);
+                bestRiverScoresList.Add(bestRiverScores[i]);
+                bestRiverKickersList.Add(bestRiverKickers[i]);
+            }
+            data.Add("bestRiverHands", bestRiverHandsList);
+            data.Add("bestRiverScores", bestRiverScoresList);
+            data.Add("bestRiverKickers", bestRiverKickersList);
+            
+            var winRankingsList = new VRC.SDK3.Data.DataList();
+            foreach (int rank in winRankings)
+                winRankingsList.Add(rank);
+            data.Add("winRankings", winRankingsList);
+            
+            var potLimitersList = new VRC.SDK3.Data.DataList();
+            var potLimitsList = new VRC.SDK3.Data.DataList();
+            var participantsPerPotList = new VRC.SDK3.Data.DataList();
+            for (int i = 0; i < potLimiters.Length; i++)
+            {
+                potLimitersList.Add(potLimiters[i]);
+                potLimitsList.Add(potLimits[i]);
+                participantsPerPotList.Add(participantsPerPot[i]);
+            }
+            data.Add("potLimiters", potLimitersList);
+            data.Add("potLimits", potLimitsList);
+            data.Add("participantsPerPot", participantsPerPotList);
+            
+            return SerializeParameterToString(new VRC.SDK3.Data.DataToken(data));
+        }
+
+        [NetworkCallable]
+        public void DeserializePlayerFromJson(string json)
+        {
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    int playerNum = (int)dict["PlayerNum"].Double;
+                    foreach (Player player in Players)
+                    {
+                        if (player.PlayerNum == playerNum)
+                            player.DeserializeFromJson(json);
+                    }
+                }
+            }            
+        }
+
+
+        [NetworkCallable]
+        public void DeserializeFromJson(string json)
+        {
+            Debug.Log($"Attempting to deserialize gamemanager: {json}");
+            if (VRCJson.TryDeserializeFromJson(json, out VRC.SDK3.Data.DataToken result))
+            {
+                if (result.TokenType == VRC.SDK3.Data.TokenType.DataDictionary)
+                {
+                    var dict = result.DataDictionary;
+                    
+                    StartingBankrolls = (int)dict["StartingBankrolls"].Double;
+                    boolBitSet = (byte)dict["boolBitSet"].Double;
+                    curPlayerIdx = (int)dict["curPlayerIdx"].Double;
+                    curDealerIdx = (int)dict["curDealerIdx"].Double;
+                    curRound = (int)dict["curRound"].Double;
+                    curStreet = (int)dict["curStreet"].Double;
+                    curStatuses = (ushort)dict["curStatuses"].Double;
+                    firstWinner = (int)dict["firstWinner"].Double;
+                    prevWinners = dict["prevWinners"].String;
+                    roundEndTimer = (float)dict["roundEndTimer"].Double;
+                    
+                    flop1CardIdx = (int)dict["flop1CardIdx"].Double;
+                    flop2CardIdx = (int)dict["flop2CardIdx"].Double;
+                    flop3CardIdx = (int)dict["flop3CardIdx"].Double;
+                    turnCardIdx = (int)dict["turnCardIdx"].Double;
+                    riverCardIdx = (int)dict["riverCardIdx"].Double;
+                    
+                    var bestFlopHandsList = dict["bestFlopHands"].DataList;
+                    var bestFlopScoresList = dict["bestFlopScores"].DataList;
+                    var bestFlopKickersList = dict["bestFlopKickers"].DataList;
+                    for (int i = 0; i < Players.Length; i++)
+                    {
+                        bestFlopHands[i] = (int)bestFlopHandsList[i].Double;
+                        bestFlopScores[i] = (long)bestFlopScoresList[i].Double;
+                        bestFlopKickers[i] = (long)bestFlopKickersList[i].Double;
+                    }
+                    
+                    var bestTurnHandsList = dict["bestTurnHands"].DataList;
+                    var bestTurnScoresList = dict["bestTurnScores"].DataList;
+                    var bestTurnKickersList = dict["bestTurnKickers"].DataList;
+                    for (int i = 0; i < Players.Length; i++)
+                    {
+                        bestTurnHands[i] = (int)bestTurnHandsList[i].Double;
+                        bestTurnScores[i] = (long)bestTurnScoresList[i].Double;
+                        bestTurnKickers[i] = (long)bestTurnKickersList[i].Double;
+                    }
+                    
+                    var bestRiverHandsList = dict["bestRiverHands"].DataList;
+                    var bestRiverScoresList = dict["bestRiverScores"].DataList;
+                    var bestRiverKickersList = dict["bestRiverKickers"].DataList;
+                    for (int i = 0; i < Players.Length; i++)
+                    {
+                        bestRiverHands[i] = (int)bestRiverHandsList[i].Double;
+                        bestRiverScores[i] = (long)bestRiverScoresList[i].Double;
+                        bestRiverKickers[i] = (long)bestRiverKickersList[i].Double;
+                    }
+                    
+                    var winRankingsList = dict["winRankings"].DataList;
+                    for (int i = 0; i < winRankings.Length; i++)
+                        winRankings[i] = (int)winRankingsList[i].Double;
+                    
+                    var potLimitersList = dict["potLimiters"].DataList;
+                    var potLimitsList = dict["potLimits"].DataList;
+                    var participantsPerPotList = dict["participantsPerPot"].DataList;
+                    for (int i = 0; i < potLimiters.Length; i++)
+                    {
+                        potLimiters[i] = (int)potLimitersList[i].Double;
+                        potLimits[i] = (int)potLimitsList[i].Double;
+                        participantsPerPot[i] = (int)participantsPerPotList[i].Double;
+                    }
+                    
+                    // Extract and deserialize Deck data
+                    if (dict.ContainsKey("deck"))
+                    {
+                        var deckDict = dict["deck"].DataDictionary;
+                        var deckJson = SerializeParameterToString(new VRC.SDK3.Data.DataToken(deckDict));
+                        GameDeck.DeserializeFromJson(deckJson);
+                    }
+                }
+            }   
+            Deserialize();         
+        }
     }
 }
